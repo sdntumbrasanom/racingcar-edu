@@ -1,0 +1,6 @@
+{
+  "name": "Apex Racer: Kuis Balap Edukasi",
+  "description": "Game balap mobil 3D interaktif edukatif dengan mode Individu & Battle 2 Pemain, kuis terintegrasi Google Spreadsheet guru, kustomisasi mobil balap, dan leaderboard global.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
