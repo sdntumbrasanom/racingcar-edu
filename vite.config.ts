@@ -5,6 +5,9 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // TAMBAHKAN LINE INI: agar aset JavaScript/CSS dibaca dari /subway_edu/ di GitHub Pages
+    base: '/racingcar-edu/',
+    
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
