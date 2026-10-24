@@ -49,6 +49,7 @@ export interface PlayerState {
 
 export type GameMode = 'solo' | 'battle';
 export type WeatherType = 'cerah' | 'mendung';
+export type GameDifficulty = 'easy' | 'medium' | 'hard';
 
 export interface TeacherRoom {
   token: string;

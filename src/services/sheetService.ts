@@ -170,7 +170,167 @@ Sistem pengereman anti-terkunci modern dikenal dengan singkatan...,ABS (Anti-loc
 Jika mobil melaju 120 km/jam selama 30 menit berapa jarak tempuhnya?,60 km,40 km,80 km,120 km`,
 };
 
+export const APPS_SCRIPT_STORAGE_KEY = 'apex_apps_script_url';
+
+export const GOOGLE_APPS_SCRIPT_SAMPLE_CODE = `/**
+ * GOOGLE APPS SCRIPT DATABASE - APEX RACER EDUKASI
+ * Multi-Device Database via Google Spreadsheet
+ *
+ * Petunjuk Deploy:
+ * 1. Buka Google Spreadsheet baru di Google Drive Anda.
+ * 2. Klik menu "Ekstensi" > "Apps Script".
+ * 3. Hapus kode bawaan (myFunction), lalu tempel seluruh kode ini.
+ * 4. Klik "Terapkan" (Deploy) > "Deployment Baru" (New Deployment).
+ * 5. Pilih jenis roda gerigi: "Aplikasi Web" (Web App).
+ *    - Deskripsi: Database Apex Racer
+ *    - Jalankan sebagai: Saya (Me)
+ *    - Siapa yang memiliki akses: Siapa saja (Anyone) -> WAJIB!
+ * 6. Klik "Terapkan" (Deploy), berikan izin akses Google jika diminta.
+ * 7. Salin URL Aplikasi Web (berakhiran /exec) lalu tempel di Portal Guru.
+ */
+
+function doGet(e) {
+  var lock = LockService.getScriptLock();
+  lock.tryLock(10000);
+  try {
+    var sheet = getOrCreateTokenSheet();
+    var action = (e && e.parameter && e.parameter.action) || 'getRoom';
+    var token = (e && e.parameter && e.parameter.token) || '';
+
+    if (action === 'getAllRooms') {
+      var data = sheet.getDataRange().getValues();
+      var rooms = {};
+      for (var i = 1; i < data.length; i++) {
+        var row = data[i];
+        if (row[0]) {
+          try {
+            rooms[row[0]] = {
+              token: String(row[0]),
+              title: String(row[1]),
+              teacherName: String(row[2]),
+              teacherPhone: String(row[3] || ''),
+              spreadsheetUrl: String(row[4] || ''),
+              questions: JSON.parse(row[5] || '[]'),
+              createdAt: Number(row[6]) || Date.now(),
+              updatedAt: Number(row[7]) || Date.now()
+            };
+          } catch(err) {}
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', rooms: rooms }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Default: find room by token
+    if (token) {
+      var cleanToken = String(token).toUpperCase().trim();
+      var data = sheet.getDataRange().getValues();
+      for (var i = 1; i < data.length; i++) {
+        if (String(data[i][0]).toUpperCase().trim() === cleanToken) {
+          var room = {
+            token: String(data[i][0]),
+            title: String(data[i][1]),
+            teacherName: String(data[i][2]),
+            teacherPhone: String(data[i][3] || ''),
+            spreadsheetUrl: String(data[i][4] || ''),
+            questions: JSON.parse(data[i][5] || '[]'),
+            createdAt: Number(data[i][6]) || Date.now(),
+            updatedAt: Number(data[i][7]) || Date.now()
+          };
+          return ContentService.createTextOutput(JSON.stringify({ status: 'success', room: room }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Token tidak ditemukan di database' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function doPost(e) {
+  var lock = LockService.getScriptLock();
+  lock.tryLock(10000);
+  try {
+    var rawData = e.postData.contents;
+    var contents = JSON.parse(rawData);
+    var sheet = getOrCreateTokenSheet();
+
+    var token = String(contents.token || '').toUpperCase().trim();
+    if (!token) {
+      throw new Error('Token wajib diisi');
+    }
+
+    var data = sheet.getDataRange().getValues();
+    var rowIndex = -1;
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]).toUpperCase().trim() === token) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    var rowData = [
+      token,
+      contents.title || '',
+      contents.teacherName || '',
+      contents.teacherPhone || '',
+      contents.spreadsheetUrl || '',
+      JSON.stringify(contents.questions || []),
+      contents.createdAt || Date.now(),
+      Date.now()
+    ];
+
+    if (rowIndex > 0) {
+      sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+    } else {
+      sheet.appendRow(rowData);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success', token: token }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getOrCreateTokenSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Tokens') || ss.getActiveSheet();
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['Token', 'Judul', 'Nama Guru', 'No WA Guru', 'Spreadsheet URL', 'Questions JSON', 'Created At', 'Updated At']);
+    sheet.getRange(1, 1, 1, 8).setFontWeight('bold').setBackground('#0284c7').setFontColor('#ffffff');
+  }
+  return sheet;
+}`;
+
 class SheetService {
+  // Get configured Google Apps Script Web App URL
+  public getAppsScriptUrl(): string {
+    try {
+      return localStorage.getItem(APPS_SCRIPT_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  // Save Apps Script Web App URL
+  public setAppsScriptUrl(url: string): void {
+    try {
+      localStorage.setItem(APPS_SCRIPT_STORAGE_KEY, url.trim());
+    } catch (e) {
+      console.warn('Failed to save Apps Script URL to localStorage', e);
+    }
+  }
+
   // Get all saved teacher rooms
   public getRooms(): Record<string, TeacherRoom> {
     try {
@@ -190,11 +350,59 @@ class SheetService {
     return rooms[token.toUpperCase().trim()] || null;
   }
 
-  // Save room
+  // Save room locally and sync to Google Apps Script database if configured
   public saveRoom(room: TeacherRoom): void {
     const rooms = this.getRooms();
     rooms[room.token.toUpperCase().trim()] = room;
     localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
+
+    // Asynchronously push to Google Apps Script database
+    const appsScriptUrl = this.getAppsScriptUrl();
+    if (appsScriptUrl) {
+      this.syncRoomToAppsScript(room, appsScriptUrl).catch((err) => {
+        console.warn('Could not sync room to Apps Script database:', err);
+      });
+    }
+  }
+
+  // Sync room to Google Apps Script Web App
+  public async syncRoomToAppsScript(room: TeacherRoom, url: string): Promise<boolean> {
+    try {
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(room),
+        mode: 'no-cors', // standard cross-origin submission to Apps Script
+      });
+      return true;
+    } catch (e) {
+      console.warn('Sync to Apps Script error:', e);
+      return false;
+    }
+  }
+
+  // Fetch a room from Google Apps Script Web App across devices
+  public async fetchRoomFromAppsScript(token: string): Promise<TeacherRoom | null> {
+    const appsScriptUrl = this.getAppsScriptUrl();
+    if (!appsScriptUrl) return null;
+
+    try {
+      const fetchUrl = `${appsScriptUrl}${appsScriptUrl.includes('?') ? '&' : '?'}action=getRoom&token=${encodeURIComponent(token.toUpperCase().trim())}`;
+      const res = await fetch(fetchUrl);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data && data.status === 'success' && data.room) {
+        // Cache to local storage
+        const room: TeacherRoom = data.room;
+        const rooms = this.getRooms();
+        rooms[room.token.toUpperCase().trim()] = room;
+        localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
+        return room;
+      }
+    } catch (e) {
+      console.warn('Fetch room from Apps Script error:', e);
+    }
+    return null;
   }
 
   // Delete room
@@ -204,7 +412,7 @@ class SheetService {
     localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
   }
 
-  // Find room or default pack by token
+  // Find room or default pack by token (synchronous)
   public getQuestionsByToken(token: string): { questions: Question[]; title: string; teacherName: string; teacherPhone?: string } | null {
     const cleanToken = token.toUpperCase().trim();
 
@@ -227,6 +435,26 @@ class SheetService {
         title: pack.title,
         teacherName: pack.teacher,
         teacherPhone: '081234567890',
+      };
+    }
+
+    return null;
+  }
+
+  // Find room or default pack by token (asynchronous with Apps Script cloud fallback for other devices)
+  public async getQuestionsByTokenAsync(token: string): Promise<{ questions: Question[]; title: string; teacherName: string; teacherPhone?: string } | null> {
+    // 1. Check local cache / presets first
+    const local = this.getQuestionsByToken(token);
+    if (local) return local;
+
+    // 2. Query Google Apps Script database (if student is on a different device)
+    const remoteRoom = await this.fetchRoomFromAppsScript(token);
+    if (remoteRoom && remoteRoom.questions.length > 0) {
+      return {
+        questions: remoteRoom.questions,
+        title: remoteRoom.title,
+        teacherName: remoteRoom.teacherName,
+        teacherPhone: remoteRoom.teacherPhone,
       };
     }
 

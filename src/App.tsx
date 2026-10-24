@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GameMode, PlayerState, GameControls, Question, PlayerCarConfig, WeatherType } from './types/game';
+import { GameMode, PlayerState, GameControls, Question, PlayerCarConfig, WeatherType, GameDifficulty } from './types/game';
 import { CAR_PRESETS } from './game/carModels';
 import { sheetService } from './services/sheetService';
 import { sound } from './services/soundService';
 import { RacingCanvas } from './game/RacingCanvas';
+import racingHeroBanner from './assets/images/racing_hero_banner_1792809824995.jpg';
 import { RacingHud } from './components/RacingHud';
 import { QuestionModal } from './components/QuestionModal';
 import { TeacherPortalModal } from './components/TeacherPortalModal';
@@ -20,6 +21,8 @@ import {
   Swords,
   Maximize,
   Minimize,
+  Sun,
+  Cloud,
 } from 'lucide-react';
 
 const TARGET_DISTANCE_METERS = 3000; // 3.0 KM track target
@@ -40,6 +43,10 @@ export default function App() {
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
+  // Countdown state before race start: 3, 2, 1, GO!
+  const [countdownValue, setCountdownValue] = useState<number | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout[]>([]);
+
   // Independent question challenge state for Player 1 & Player 2
   // In Battle mode: if P1 gets a question, it stays on P1's screen and DOES NOT block P2!
   const [p1Question, setP1Question] = useState<Question | null>(null);
@@ -54,6 +61,7 @@ export default function App() {
 
   // Game configuration
   const [gameMode, setGameMode] = useState<GameMode>('solo');
+  const [difficulty, setDifficulty] = useState<GameDifficulty>('medium');
   const [activeToken, setActiveToken] = useState<string>('BALAP-KILAT');
   const [questionBank, setQuestionBank] = useState<Question[]>([]);
   const [winnerName, setWinnerName] = useState<string | undefined>();
@@ -143,84 +151,47 @@ export default function App() {
         return;
       }
 
-      // Player 1 controls (WASD / Arrows in Solo)
+      // Player 1 controls (Solo: ArrowLeft / A for left, ArrowRight / D for right)
       if (gameMode === 'solo') {
-        if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
-          setP1Controls((c: GameControls) => ({ ...c, accelerate: true }));
-        } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
-          setP1Controls((c: GameControls) => ({ ...c, brake: true }));
-        } else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
           setP1Controls((c: GameControls) => ({ ...c, steerLeft: true }));
         } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
           setP1Controls((c: GameControls) => ({ ...c, steerRight: true }));
-        } else if (e.key === 'Shift' || e.key === ' ' || e.key === 'f' || e.key === 'F') {
-          setP1Controls((c: GameControls) => ({ ...c, nitro: true }));
         }
       } else {
-        // Battle mode: P1 uses WASD + Shift
-        if (e.key === 'w' || e.key === 'W') {
-          setP1Controls((c: GameControls) => ({ ...c, accelerate: true }));
-        } else if (e.key === 's' || e.key === 'S') {
-          setP1Controls((c: GameControls) => ({ ...c, brake: true }));
-        } else if (e.key === 'a' || e.key === 'A') {
+        // Battle mode: P1 uses A / D, P2 uses ArrowLeft / ArrowRight
+        if (e.key === 'a' || e.key === 'A') {
           setP1Controls((c: GameControls) => ({ ...c, steerLeft: true }));
         } else if (e.key === 'd' || e.key === 'D') {
           setP1Controls((c: GameControls) => ({ ...c, steerRight: true }));
-        } else if (e.key === 'Shift' || e.key === 'q' || e.key === 'Q') {
-          setP1Controls((c: GameControls) => ({ ...c, nitro: true }));
         }
 
-        // Battle mode: P2 uses Arrow Keys + Enter / Numpad 0
-        if (e.key === 'ArrowUp') {
-          setP2Controls((c: GameControls) => ({ ...c, accelerate: true }));
-        } else if (e.key === 'ArrowDown') {
-          setP2Controls((c: GameControls) => ({ ...c, brake: true }));
-        } else if (e.key === 'ArrowLeft') {
+        if (e.key === 'ArrowLeft') {
           setP2Controls((c: GameControls) => ({ ...c, steerLeft: true }));
         } else if (e.key === 'ArrowRight') {
           setP2Controls((c: GameControls) => ({ ...c, steerRight: true }));
-        } else if (e.key === 'Enter' || e.key === '0' || e.key === 'Control') {
-          setP2Controls((c: GameControls) => ({ ...c, nitro: true }));
         }
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (gameMode === 'solo') {
-        if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
-          setP1Controls((c: GameControls) => ({ ...c, accelerate: false }));
-        } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
-          setP1Controls((c: GameControls) => ({ ...c, brake: false }));
-        } else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
           setP1Controls((c: GameControls) => ({ ...c, steerLeft: false }));
         } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
           setP1Controls((c: GameControls) => ({ ...c, steerRight: false }));
-        } else if (e.key === 'Shift' || e.key === ' ' || e.key === 'f' || e.key === 'F') {
-          setP1Controls((c: GameControls) => ({ ...c, nitro: false }));
         }
       } else {
-        if (e.key === 'w' || e.key === 'W') {
-          setP1Controls((c: GameControls) => ({ ...c, accelerate: false }));
-        } else if (e.key === 's' || e.key === 'S') {
-          setP1Controls((c: GameControls) => ({ ...c, brake: false }));
-        } else if (e.key === 'a' || e.key === 'A') {
+        if (e.key === 'a' || e.key === 'A') {
           setP1Controls((c: GameControls) => ({ ...c, steerLeft: false }));
         } else if (e.key === 'd' || e.key === 'D') {
           setP1Controls((c: GameControls) => ({ ...c, steerRight: false }));
-        } else if (e.key === 'Shift' || e.key === 'q' || e.key === 'Q') {
-          setP1Controls((c: GameControls) => ({ ...c, nitro: false }));
         }
 
-        if (e.key === 'ArrowUp') {
-          setP2Controls((c: GameControls) => ({ ...c, accelerate: false }));
-        } else if (e.key === 'ArrowDown') {
-          setP2Controls((c: GameControls) => ({ ...c, brake: false }));
-        } else if (e.key === 'ArrowLeft') {
+        if (e.key === 'ArrowLeft') {
           setP2Controls((c: GameControls) => ({ ...c, steerLeft: false }));
         } else if (e.key === 'ArrowRight') {
           setP2Controls((c: GameControls) => ({ ...c, steerRight: false }));
-        } else if (e.key === 'Enter' || e.key === '0' || e.key === 'Control') {
-          setP2Controls((c: GameControls) => ({ ...c, nitro: false }));
         }
       }
     };
@@ -277,6 +248,7 @@ export default function App() {
   const handleStartRace = (setup: {
     mode: GameMode;
     token: string;
+    difficulty: GameDifficulty;
     p1Name: string;
     p1Car: PlayerCarConfig;
     p2Name?: string;
@@ -284,6 +256,7 @@ export default function App() {
   }) => {
     setGameMode(setup.mode);
     setActiveToken(setup.token);
+    setDifficulty(setup.difficulty);
 
     const qData = sheetService.getQuestionsByToken(setup.token);
     const questions = qData ? qData.questions : [];
@@ -328,6 +301,33 @@ export default function App() {
     setShowSetupModal(false);
     setShowGameOverModal(false);
     setGameState('playing');
+
+    // Arcade Countdown Sequence: 3, 2, 1, GO!
+    countdownTimerRef.current.forEach(clearTimeout);
+    countdownTimerRef.current = [];
+    setCountdownValue(3);
+    sound.playCountdownBeep(false);
+
+    const t1 = setTimeout(() => {
+      setCountdownValue(2);
+      sound.playCountdownBeep(false);
+    }, 1000);
+
+    const t2 = setTimeout(() => {
+      setCountdownValue(1);
+      sound.playCountdownBeep(false);
+    }, 2000);
+
+    const t3 = setTimeout(() => {
+      setCountdownValue(0); // 0 = GO!
+      sound.playCountdownBeep(true);
+    }, 3000);
+
+    const t4 = setTimeout(() => {
+      setCountdownValue(null); // Active race begins!
+    }, 3900);
+
+    countdownTimerRef.current = [t1, t2, t3, t4];
   };
 
   // Trigger bonus question popup for either P1 or P2 with anti-cheat randomization
@@ -409,12 +409,51 @@ export default function App() {
             p1Controls={p1Controls}
             p2Controls={p2Controls}
             isPaused={gameMode === 'solo' ? Boolean(p1Question) || showGameOverModal : showGameOverModal}
+            isCountdown={countdownValue !== null}
             isP1Answering={Boolean(p1Question)}
             isP2Answering={Boolean(p2Question)}
             weather={weather}
+            difficulty={difficulty}
             targetDistanceMeters={TARGET_DISTANCE_METERS}
             totalQuestions={questionBank.length}
           />
+
+          {/* Arcade Countdown Overlay: 3, 2, 1, GO! */}
+          {countdownValue !== null && (
+            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-slate-950/50 backdrop-blur-[2px] pointer-events-none select-none">
+              <div className="flex flex-col items-center animate-in zoom-in-75 duration-200">
+                <div className="px-5 py-1.5 rounded-full bg-slate-900/90 border border-cyan-400 text-cyan-300 text-xs font-mono font-black tracking-widest uppercase mb-4 shadow-[0_0_20px_rgba(6,182,212,0.6)]">
+                  🏁 GARIS START
+                </div>
+
+                <div
+                  key={countdownValue}
+                  className={`font-black font-mono tracking-tighter text-center transition-all duration-300 animate-in zoom-in-50 drop-shadow-[0_10px_35px_rgba(0,0,0,0.9)] ${
+                    countdownValue === 0
+                      ? 'text-8xl sm:text-[160px] text-emerald-400 drop-shadow-[0_0_60px_rgba(52,211,153,0.95)] scale-110'
+                      : countdownValue === 1
+                      ? 'text-8xl sm:text-[150px] text-amber-400 drop-shadow-[0_0_50px_rgba(251,191,36,0.9)]'
+                      : countdownValue === 2
+                      ? 'text-8xl sm:text-[150px] text-cyan-400 drop-shadow-[0_0_50px_rgba(6,182,212,0.9)]'
+                      : 'text-8xl sm:text-[150px] text-rose-500 drop-shadow-[0_0_50px_rgba(244,63,94,0.9)]'
+                  }`}
+                >
+                  {countdownValue === 0 ? 'GAS!' : countdownValue}
+                </div>
+
+                <div className="mt-4 px-5 py-2 rounded-2xl bg-slate-900/95 border border-slate-700/80 shadow-2xl flex flex-col items-center text-center">
+                  <span className="text-xs sm:text-sm font-black text-white uppercase tracking-wider">
+                    {countdownValue === 0
+                      ? '🏎️ TANCAP GAS OTOMATIS! FOKUS BELOK KIRI & KANAN!'
+                      : 'Mobil akan melaju otomatis semakin lama semakin cepat!'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 mt-0.5">
+                    Hindari menabrak peserta lain & batas jalan agar kecepatan tidak turun
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Player 1 HUD & Mobile Controls */}
           <RacingHud
@@ -467,17 +506,27 @@ export default function App() {
           {/* Top Center Pause / Menu Bar, Weather & Symbol-Only Fullscreen Dock */}
           <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-2xl">
             <button
-              onClick={() => setGameState('title')}
+              onClick={() => {
+                countdownTimerRef.current.forEach(clearTimeout);
+                countdownTimerRef.current = [];
+                setCountdownValue(null);
+                setGameState('title');
+              }}
               className="pointer-events-auto px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs font-bold transition shadow cursor-pointer flex items-center gap-1"
             >
               Menu
             </button>
             <button
               onClick={() => setWeather((w) => (w === 'cerah' ? 'mendung' : 'cerah'))}
-              className="pointer-events-auto px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs font-bold transition shadow cursor-pointer flex items-center gap-1"
-              title={`Ganti Cuaca: ${weather === 'cerah' ? '☀️ Cerah' : '☁️ Mendung'}`}
+              className="pointer-events-auto p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition shadow cursor-pointer flex items-center justify-center"
+              title={`Ganti Cuaca: ${weather === 'cerah' ? 'Cerah (Klik untuk Mendung)' : 'Mendung (Klik untuk Cerah)'}`}
+              aria-label={weather === 'cerah' ? 'Cuaca Cerah' : 'Cuaca Mendung'}
             >
-              <span>{weather === 'cerah' ? '☀️ Cerah' : '☁️ Mendung'}</span>
+              {weather === 'cerah' ? (
+                <Sun className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Cloud className="w-4 h-4 text-slate-300" />
+              )}
             </button>
             {/* Symbol-Only Fullscreen Button */}
             <button
@@ -491,89 +540,120 @@ export default function App() {
           </div>
         </div>
       ) : (
-        /* 2. Title Screen & Hero Shell */
-        <div className="relative w-full h-full flex flex-col justify-between p-6 sm:p-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black overflow-y-auto">
-          {/* Background Ambient Glow & Racing Grid Lines */}
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b15_1px,transparent_1px),linear-gradient(to_bottom,#1e293b15_1px,transparent_1px)] bg-[size:4rem_4rem] pointer-events-none" />
-          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        /* 2. Title Screen & Hero Shell with Fullscreen Dynamic Background (Single Viewport - No Scroll) */
+        <div className="relative w-full h-full max-h-screen overflow-hidden flex flex-col justify-between p-3 sm:p-5 md:p-6 select-none">
+          {/* Fullscreen Atmospheric Background Image (Clearer & More Vivid) */}
+          <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+            <img
+              src={racingHeroBanner}
+              alt="Racing Circuit Background"
+              className="w-full h-full object-cover object-center scale-105 filter brightness-[0.78] contrast-[1.12] saturate-[1.2]"
+            />
+            {/* Soft Cinematic Overlays for Clear Visibility & Legibility */}
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-slate-950/55" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(2,6,23,0.55)_90%)]" />
+            {/* Ambient Grid lines */}
+            <div className="absolute inset-0 bg-[linear-gradient(to_right,#38bdf806_1px,transparent_1px),linear-gradient(to_bottom,#38bdf806_1px,transparent_1px)] bg-[size:4rem_4rem]" />
+          </div>
 
-          {/* Top Bar: Weather, Fullscreen (symbol only), Sound & Masuk Guru */}
-          <div className="relative z-10 flex items-center justify-between w-full max-w-6xl mx-auto flex-wrap gap-3">
+          {/* Top Bar: Weather, Fullscreen, Sound & Portal Guru (Floating Glassmorphism) */}
+          <div className="relative z-10 flex items-center justify-between w-full max-w-6xl mx-auto flex-wrap gap-2 shrink-0">
             {/* Brand Logo Badge */}
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-indigo-600 flex items-center justify-center text-slate-950 font-black shadow-[0_0_20px_rgba(6,182,212,0.6)]">
+            <div className="flex items-center gap-2 bg-slate-950/75 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/60 shadow-lg">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-indigo-600 flex items-center justify-center text-slate-950 font-black shadow-[0_0_15px_rgba(6,182,212,0.6)] text-base">
                 🏎️
               </div>
               <div>
-                <span className="font-mono font-black text-xs text-cyan-400 tracking-widest uppercase">
-                  SIMULATOR BALAP 3D
+                <span className="font-mono font-black text-[10px] text-cyan-400 tracking-wider capitalize block leading-tight">
+                  Developed By Misbahul Munir
                 </span>
-                <h1 className="text-sm font-bold text-slate-200">Kuis Edukasi Sekolah</h1>
+                <span className="text-[11px] font-bold text-slate-200 leading-none">Racing Car Edu</span>
               </div>
             </div>
 
-            {/* Top Quick Actions (Spreadsheet & Leaderboard hidden from title screen as requested) */}
-            <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
-              {/* Weather Switcher (☀️ Cerah / ☁️ Mendung) */}
+            {/* Top Quick Action Symbols: Cuaca, Suara, Fullscreen, Portal Guru */}
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap bg-slate-950/75 backdrop-blur-md p-1 rounded-xl border border-slate-700/60 shadow-lg">
+              {/* Weather Switcher (Symbol Only) */}
               <button
                 type="button"
                 onClick={() => setWeather((w) => (w === 'cerah' ? 'mendung' : 'cerah'))}
-                className="px-3 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition shadow cursor-pointer text-xs font-bold flex items-center gap-1.5"
-                title={`Pilih Suasana Cuaca Sirkuit: ${weather === 'cerah' ? '☀️ Langit Cerah' : '☁️ Langit Mendung'}`}
+                className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition shadow cursor-pointer flex items-center justify-center"
+                title={weather === 'cerah' ? 'Cuaca: Cerah (Klik untuk Cuaca Mendung)' : 'Cuaca: Mendung (Klik untuk Cuaca Cerah)'}
+                aria-label={weather === 'cerah' ? 'Cuaca Cerah' : 'Cuaca Mendung'}
               >
-                <span>{weather === 'cerah' ? '☀️ Cerah' : '☁️ Mendung'}</span>
+                {weather === 'cerah' ? (
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                ) : (
+                  <Cloud className="w-3.5 h-3.5 text-slate-300" />
+                )}
               </button>
 
-              {/* Sound Toggle Button */}
+              {/* Sound Toggle Button (Symbol Only) */}
               <button
+                type="button"
                 onClick={handleToggleMute}
-                className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-300 hover:text-white transition shadow cursor-pointer"
+                className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition shadow cursor-pointer flex items-center justify-center"
                 title={isMuted ? 'Nyalakan Audio' : 'Bisukan Audio'}
+                aria-label={isMuted ? 'Nyalakan Audio' : 'Bisukan Audio'}
               >
-                {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                {isMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
               </button>
 
               {/* Symbol-Only Fullscreen Button */}
               <button
                 type="button"
                 onClick={handleToggleFullscreen}
-                className="p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-cyan-500/50 text-cyan-300 hover:text-white transition shadow-lg cursor-pointer flex items-center justify-center"
+                className="p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-cyan-500/50 text-cyan-300 hover:text-white transition shadow cursor-pointer flex items-center justify-center"
                 title={isFullscreen ? 'Keluar Layar Penuh' : 'Layar Penuh (Full Screen)'}
                 aria-label={isFullscreen ? 'Keluar Layar Penuh' : 'Layar Penuh (Full Screen)'}
               >
-                {isFullscreen ? <Minimize className="w-4 h-4 text-cyan-400" /> : <Maximize className="w-4 h-4 text-cyan-400" />}
+                {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-cyan-400" /> : <Maximize className="w-3.5 h-3.5 text-cyan-400" />}
               </button>
 
-              {/* Portal Guru Action */}
+              {/* Portal Guru Action (Symbol Only) */}
               <button
+                type="button"
                 onClick={() => setShowTeacherModal(true)}
-                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-[0_0_15px_rgba(99,102,241,0.5)] cursor-pointer"
+                className="p-2 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white transition shadow-[0_0_15px_rgba(99,102,241,0.5)] cursor-pointer flex items-center justify-center"
+                title="Portal Guru (Kelola Soal & Spreadsheet)"
+                aria-label="Portal Guru"
               >
-                <GraduationCap className="w-4 h-4" />
-                <span>Masuk Guru</span>
+                <GraduationCap className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
-          {/* Hero Centerpiece: Race Title & Mode Selection Cards */}
-          <div className="relative z-10 max-w-4xl mx-auto w-full text-center my-auto py-8">
-            <div className="flex items-center justify-center gap-2 flex-wrap mb-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold backdrop-blur-sm shadow-[0_0_20px_rgba(6,182,212,0.2)]">
-                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Turnamen Balap & Kuis Interaktif Google Spreadsheet</span>
-              </div>
+          {/* Hero Centerpiece: Floating Race Title & Floating Mode Selection Cards (Single Viewport Fit) */}
+          <div className="relative z-10 max-w-4xl mx-auto w-full text-center my-auto py-1 sm:py-2 flex flex-col items-center">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950/80 border border-cyan-400/40 text-cyan-300 text-[10px] sm:text-xs font-semibold backdrop-blur-md shadow mb-1.5">
+              <Sparkles className="w-3 h-3 text-cyan-400 shrink-0" />
+              <span>Game Balap Edukatif Untuk Kamu yang Suka Tantangan</span>
             </div>
 
-            <h1 className="text-4xl sm:text-6xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-400 tracking-tight uppercase leading-none font-sans drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)]">
-              APEX RACER
+            {/* Smaller Single-Line RACING CAR EDU Heading */}
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-100 to-slate-200 tracking-wider uppercase leading-tight font-sans drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)] whitespace-nowrap">
+              RACING CAR EDU
             </h1>
-            <p className="text-sm sm:text-base text-slate-400 max-w-xl mx-auto mt-3 font-normal">
-              Kemudikan mobil balap 3D impianmu, hindari peserta lain di sirkuit profesional, dan raih poin tertinggi dengan menjawab kuis edukasi!
+
+            <p className="text-xs sm:text-[13px] text-slate-200 max-w-xl mx-auto mt-1.5 font-normal drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] leading-snug">
+              "Akselerasikan pikiranmu, kendalikan kecepatannya, dan buktikan bahwa kecerdasan adalah mesin terhebat di lintasan!"
             </p>
 
-            {/* Game Mode Choice Cards (Individu vs Battle) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-2xl mx-auto mt-8">
+            {/* Floating Circuit Features Badges in One Line */}
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap mt-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-cyan-400/40 text-cyan-300 text-[10px] font-semibold shadow">
+                🏁 Sirkuit Grand Prix Pegunungan
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-amber-400/40 text-amber-300 text-[10px] font-mono font-bold shadow">
+                ⚡ Top Speed 360+ km/h
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-indigo-400/40 text-indigo-300 text-[10px] font-semibold shadow">
+                🎮 Auto-Gas & Refleks Kemudi
+              </span>
+            </div>
+
+            {/* Compact Floating Game Mode Choice Cards (Individu vs Battle) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-xl mx-auto mt-3.5 w-full">
               {/* Option 1: Solo Race */}
               <button
                 type="button"
@@ -582,18 +662,18 @@ export default function App() {
                   setGameMode('solo');
                   setShowSetupModal(true);
                 }}
-                className="group relative p-6 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border-2 border-slate-700/80 hover:border-cyan-400 hover:shadow-[0_0_35px_rgba(6,182,212,0.4)] transition-all cursor-pointer flex flex-col items-center text-center overflow-hidden"
+                className="group relative p-3.5 sm:p-4 rounded-2xl bg-slate-950/85 hover:bg-slate-900/95 backdrop-blur-xl border-2 border-slate-700/80 hover:border-cyan-400 hover:shadow-[0_0_30px_rgba(6,182,212,0.4)] transition-all duration-300 cursor-pointer flex flex-col items-center text-center overflow-hidden"
               >
-                <div className="w-14 h-14 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 mb-4 group-hover:scale-110 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-all duration-300 shadow">
-                  <Play className="w-7 h-7 fill-current ml-0.5" />
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-400/50 flex items-center justify-center text-cyan-300 mb-2 group-hover:scale-110 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-all duration-300 shadow">
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
                 </div>
-                <h3 className="text-xl font-black text-white group-hover:text-cyan-300 transition-colors">
+                <h3 className="text-base font-black text-white group-hover:text-cyan-300 transition-colors leading-tight">
                   Balapan Individu
                 </h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  3 Nyawa, lintasan penuh tantangan peserta lain. Jawab soal bonus untuk menambah nyawa dan kirim nilai ke WhatsApp guru!
+                <p className="text-[11px] text-slate-300 mt-1 leading-snug line-clamp-2">
+                  3 Nyawa, tantangan peserta lain & kuis bonus. Kirim nilai ke WA guru!
                 </p>
-                <span className="mt-4 px-4 py-1.5 rounded-xl bg-slate-800 text-cyan-400 text-xs font-bold border border-slate-700 group-hover:bg-cyan-500 group-hover:text-slate-950 group-hover:border-cyan-400 transition-colors">
+                <span className="mt-3 px-3.5 py-1 rounded-lg bg-slate-900 text-cyan-400 text-[10px] sm:text-xs font-bold border border-slate-700 group-hover:bg-cyan-500 group-hover:text-slate-950 group-hover:border-cyan-400 transition-all shadow">
                   PILIH INDIVIDU ➔
                 </span>
               </button>
@@ -606,27 +686,27 @@ export default function App() {
                   setGameMode('battle');
                   setShowSetupModal(true);
                 }}
-                className="group relative p-6 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border-2 border-slate-700/80 hover:border-amber-400 hover:shadow-[0_0_35px_rgba(245,158,11,0.4)] transition-all cursor-pointer flex flex-col items-center text-center overflow-hidden"
+                className="group relative p-3.5 sm:p-4 rounded-2xl bg-slate-950/85 hover:bg-slate-900/95 backdrop-blur-xl border-2 border-slate-700/80 hover:border-amber-400 hover:shadow-[0_0_30px_rgba(245,158,11,0.4)] transition-all duration-300 cursor-pointer flex flex-col items-center text-center overflow-hidden"
               >
-                <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 mb-4 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-slate-950 transition-all duration-300 shadow">
-                  <Swords className="w-7 h-7" />
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-300 mb-2 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-slate-950 transition-all duration-300 shadow">
+                  <Swords className="w-5 h-5" />
                 </div>
-                <h3 className="text-xl font-black text-white group-hover:text-amber-300 transition-colors">
+                <h3 className="text-base font-black text-white group-hover:text-amber-300 transition-colors leading-tight">
                   Battle 2 Pemain
                 </h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Layar terbelah (Kiri P1 & Kanan P2). Soal muncul di layar masing-masing tanpa mengganggu lawan. Skor tertinggi yang menang!
+                <p className="text-[11px] text-slate-300 mt-1 leading-snug line-clamp-2">
+                  Layar terbelah (P1 Kiri & P2 Kanan). Kuis mandiri tanpa ganggu lawan!
                 </p>
-                <span className="mt-4 px-4 py-1.5 rounded-xl bg-slate-800 text-amber-400 text-xs font-bold border border-slate-700 group-hover:bg-amber-500 group-hover:text-slate-950 group-hover:border-amber-400 transition-colors">
+                <span className="mt-3 px-3.5 py-1 rounded-lg bg-slate-900 text-amber-400 text-[10px] sm:text-xs font-bold border border-slate-700 group-hover:bg-amber-500 group-hover:text-slate-950 group-hover:border-amber-400 transition-all shadow">
                   PILIH BATTLE ➔
                 </span>
               </button>
             </div>
 
-            {/* Quick Token Badge */}
-            <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-400">
+            {/* Quick Token Badge Floating */}
+            <div className="mt-3 inline-flex items-center justify-center gap-2 text-[10px] sm:text-[11px] text-slate-300 bg-slate-950/80 backdrop-blur-md px-3 py-1 rounded-full border border-slate-700/80 shadow">
               <span>Token Aktif:</span>
-              <span className="font-mono px-2 py-0.5 rounded bg-slate-800 text-amber-400 border border-slate-700 font-bold">
+              <span className="font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
                 {activeToken}
               </span>
               <span className="text-slate-500">•</span>
@@ -634,11 +714,11 @@ export default function App() {
             </div>
           </div>
 
-          {/* Footer Info Bar */}
-          <div className="relative z-10 w-full max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 border-t border-slate-800/80 pt-4 gap-2">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span className="text-slate-400 font-medium">Sirkuit Balap Aktif: 10,000 Meter Continuous Track</span>
+          {/* Footer Info Bar Floating */}
+          <div className="relative z-10 w-full max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between text-[10px] text-slate-400 bg-slate-950/75 backdrop-blur-md border border-slate-800/80 rounded-xl px-4 py-1.5 shadow-lg gap-1 shrink-0">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              <span className="text-slate-300 font-medium">Sirkuit Balap Aktif: 10,000 Meter Continuous Track</span>
             </div>
             <div>
               Apex Racer Edukasi • 6 Model Mobil Balap • Keyboard WASD / Panah & Touch Screen Mobile
@@ -654,6 +734,7 @@ export default function App() {
         onStartGame={handleStartRace}
         initialMode={gameMode}
         initialToken={activeToken}
+        initialDifficulty={difficulty}
       />
 
       {/* Teacher Portal Modal */}

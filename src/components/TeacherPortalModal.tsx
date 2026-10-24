@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { sheetService, SPREADSHEET_TEMPLATE_INFO } from '../services/sheetService';
+import { sheetService, SPREADSHEET_TEMPLATE_INFO, GOOGLE_APPS_SCRIPT_SAMPLE_CODE } from '../services/sheetService';
 import { TeacherRoom, Question } from '../types/game';
 import {
   GraduationCap,
@@ -19,6 +19,11 @@ import {
   Sparkles,
   Phone,
   Award,
+  Database,
+  Eye,
+  EyeOff,
+  CloudUpload,
+  RefreshCw,
 } from 'lucide-react';
 
 interface TeacherPortalModalProps {
@@ -49,8 +54,14 @@ export const TeacherPortalModal: React.FC<TeacherPortalModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [copiedTemplate, setCopiedTemplate] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'guide'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'database' | 'guide'>('create');
   const [previewQuestions, setPreviewQuestions] = useState<Question[] | null>(null);
+
+  // Apps Script Database configuration (Private / hidden from students)
+  const [appsScriptUrl, setAppsScriptUrl] = useState<string>(sheetService.getAppsScriptUrl());
+  const [showAppsScriptUrl, setShowAppsScriptUrl] = useState<boolean>(false);
+  const [copiedScript, setCopiedScript] = useState<boolean>(false);
+  const [isSyncingAll, setIsSyncingAll] = useState<boolean>(false);
 
   // Load saved teacher profile (name & phone)
   React.useEffect(() => {
@@ -76,7 +87,7 @@ export const TeacherPortalModal: React.FC<TeacherPortalModalProps> = ({
       setIsLoggedIn(true);
       setLoginError('');
     } else {
-      setLoginError('Username atau Password salah! (Gunakan: guru / guruhebat)');
+      setLoginError('Username atau Password salah! (Hubungi 085722228896. Gratis!)');
     }
   };
 
@@ -168,6 +179,53 @@ export const TeacherPortalModal: React.FC<TeacherPortalModalProps> = ({
     document.body.removeChild(link);
   };
 
+  const handleSaveAppsScriptUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    sheetService.setAppsScriptUrl(appsScriptUrl);
+    setStatusMessage({
+      type: 'success',
+      text: appsScriptUrl.trim()
+        ? 'URL Database Google Apps Script berhasil disimpan! Token soal kini dapat diakses siswa dari perangkat mana pun.'
+        : 'URL Database Google Apps Script telah dihapus. Menggunakan penyimpanan lokal.',
+    });
+  };
+
+  const handleCopyAppsScriptCode = () => {
+    navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_SAMPLE_CODE);
+    setCopiedScript(true);
+    setTimeout(() => setCopiedScript(false), 2000);
+  };
+
+  const handleSyncAllTokens = async () => {
+    if (!appsScriptUrl.trim()) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Silakan isi dan simpan URL Web App Apps Script terlebih dahulu sebelum sinkronisasi.',
+      });
+      return;
+    }
+
+    setIsSyncingAll(true);
+    try {
+      let count = 0;
+      for (const room of roomList) {
+        await sheetService.syncRoomToAppsScript(room, appsScriptUrl.trim());
+        count++;
+      }
+      setStatusMessage({
+        type: 'success',
+        text: `Berhasil menyinkronkan ${count} token soal ke Google Spreadsheet database!`,
+      });
+    } catch (e) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Gagal menyinkronkan token: ' + String(e),
+      });
+    } finally {
+      setIsSyncingAll(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full max-w-3xl bg-slate-900 border-2 border-indigo-500/70 rounded-2xl shadow-[0_0_50px_rgba(99,102,241,0.3)] overflow-hidden flex flex-col max-h-[92vh]">
@@ -252,7 +310,7 @@ export const TeacherPortalModal: React.FC<TeacherPortalModalProps> = ({
               </button>
 
               <div className="mt-2 p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-[11px] text-slate-400 text-center">
-                Petunjuk Akses Default: Username: <strong className="text-indigo-300">guru</strong> | Password: <strong className="text-indigo-300">guruhebat</strong>
+                Petunjuk: Masukkan <strong className="text-indigo-300">Username</strong> | dan <strong className="text-indigo-300">Password</strong>
               </div>
             </form>
           </div>
@@ -281,6 +339,17 @@ export const TeacherPortalModal: React.FC<TeacherPortalModalProps> = ({
                   }`}
                 >
                   <FileSpreadsheet className="w-4 h-4" /> Daftar Token Saya ({roomList.length})
+                </button>
+                <button
+                  onClick={() => setActiveTab('database')}
+                  className={`px-4 py-2 text-xs font-bold rounded-t-lg transition border-b-2 cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'database'
+                      ? 'border-indigo-500 text-indigo-400 bg-slate-800/80'
+                      : 'border-transparent text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Database className="w-4 h-4 text-cyan-400" /> Database Apps Script
+                  {appsScriptUrl ? <span className="w-2 h-2 rounded-full bg-emerald-400 ml-1" title="Database Terhubung" /> : null}
                 </button>
                 <button
                   onClick={() => setActiveTab('guide')}
@@ -537,6 +606,116 @@ export const TeacherPortalModal: React.FC<TeacherPortalModalProps> = ({
                     </div>
                   ))
                 )}
+              </div>
+            )}
+
+            {/* Tab: Database Multi-Perangkat (Apps Script) */}
+            {activeTab === 'database' && (
+              <div className="flex-1 overflow-y-auto p-6 space-y-5 text-sm text-slate-300">
+                {/* Status Card */}
+                <div className={`p-4 rounded-xl border flex items-start gap-3 ${
+                  appsScriptUrl.trim()
+                    ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
+                    : 'bg-amber-950/40 border-amber-500/50 text-amber-200'
+                }`}>
+                  <Database className={`w-5 h-5 shrink-0 mt-0.5 ${appsScriptUrl.trim() ? 'text-emerald-400' : 'text-amber-400'}`} />
+                  <div>
+                    <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                      {appsScriptUrl.trim() ? '🟢 Database Multi-Perangkat Aktif' : '🟡 Mode Penyimpanan Lokal (Belum Terhubung)'}
+                    </h4>
+                    <p className="text-xs mt-1 leading-relaxed text-slate-300">
+                      {appsScriptUrl.trim()
+                        ? 'Token dan kuis yang Anda buat otomatis tersinkronisasi ke Google Spreadsheet Anda. Siswa di HP atau komputer mana pun dapat memasukkan token dan langsung bermain.'
+                        : 'Masukkan URL Aplikasi Web Google Apps Script di bawah agar token soal dapat diakses siswa dari perangkat yang berbeda.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Private URL Input Form */}
+                <form onSubmit={handleSaveAppsScriptUrl} className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <KeyRound className="w-4 h-4 text-cyan-400" /> URL Aplikasi Web Google Apps Script (/exec)
+                    </label>
+                    <span className="text-[10px] text-slate-400 italic">
+                      Tersimpan rahasia di browser Anda
+                    </span>
+                  </div>
+
+                  <div className="relative flex items-center">
+                    <input
+                      type={showAppsScriptUrl ? 'text' : 'password'}
+                      value={appsScriptUrl}
+                      onChange={(e) => setAppsScriptUrl(e.target.value)}
+                      placeholder="https://script.google.com/macros/s/.../exec"
+                      className="w-full pr-12 pl-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 font-mono text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAppsScriptUrl(!showAppsScriptUrl)}
+                      className="absolute right-3 text-slate-400 hover:text-white cursor-pointer"
+                      title={showAppsScriptUrl ? 'Sembunyikan URL' : 'Tampilkan URL'}
+                    >
+                      {showAppsScriptUrl ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs tracking-wider uppercase transition shadow-lg shadow-cyan-600/30 cursor-pointer flex items-center gap-2"
+                    >
+                      <Check className="w-4 h-4" /> Simpan URL Database
+                    </button>
+
+                    {roomList.length > 0 && appsScriptUrl.trim() && (
+                      <button
+                        type="button"
+                        onClick={handleSyncAllTokens}
+                        disabled={isSyncingAll}
+                        className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs transition cursor-pointer flex items-center gap-2"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin text-cyan-400' : ''}`} />
+                        <span>Sinkronkan {roomList.length} Token ke Database Cloud</span>
+                      </button>
+                    )}
+                  </div>
+                </form>
+
+                {/* Step-by-Step Guide */}
+                <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+                  <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                    <CloudUpload className="w-4 h-4 text-indigo-400" />
+                    Cara Membuat Database Google Spreadsheet & Apps Script (Gratis & Mudah)
+                  </h4>
+                  <ol className="list-decimal list-inside space-y-2 text-xs text-slate-300 leading-relaxed">
+                    <li>Buka <a href="https://sheets.new" target="_blank" rel="noreferrer" className="text-cyan-400 underline font-bold inline-flex items-center gap-0.5">Google Sheets Baru <ExternalLink className="w-3 h-3" /></a> di Google Drive akun Anda.</li>
+                    <li>Di Google Sheets, klik menu <strong>Ekstensi (Extensions)</strong> &gt; <strong>Apps Script</strong>.</li>
+                    <li>Hapus kode bawaan yang ada di editor, lalu klik tombol <strong>"Salin Seluruh Kode Google Apps Script"</strong> di bawah dan tempelkan.</li>
+                    <li>Klik menu biru di kanan atas: <strong>Terapkan (Deploy)</strong> &gt; <strong>Deployment baru (New deployment)</strong>.</li>
+                    <li>
+                      Pilih jenis: <strong>Aplikasi Web (Web app)</strong>:
+                      <ul className="list-disc list-inside pl-4 mt-1 space-y-0.5 text-slate-400">
+                        <li>Jalankan sebagai: <strong>Saya (Me)</strong></li>
+                        <li>Siapa yang memiliki akses: <strong className="text-amber-300">Siapa saja (Anyone)</strong> (PENTING agar siswa bisa akses token)</li>
+                      </ul>
+                    </li>
+                    <li>Klik <strong>Terapkan</strong>, setujui izin akses Google, lalu salin URL yang berakhiran <code className="text-cyan-300 font-mono">/exec</code>.</li>
+                    <li>Tempelkan URL tersebut ke kolom formulir di atas dan klik <strong>Simpan URL Database</strong>. Selesai! 🎉</li>
+                  </ol>
+
+                  {/* One-Click Copy Code Button */}
+                  <div className="pt-2 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleCopyAppsScriptCode}
+                      className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold transition shadow-lg cursor-pointer flex items-center gap-2"
+                    >
+                      {copiedScript ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiedScript ? 'Kode Berhasil Disalin ke Clipboard!' : 'Salin Seluruh Kode Google Apps Script'}</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 

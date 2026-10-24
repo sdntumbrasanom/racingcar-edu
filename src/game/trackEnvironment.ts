@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildProceduralCar, ProceduralCarResult } from './carModels';
-import { CarModelType, WeatherType } from '../types/game';
+import { CarModelType, WeatherType, GameDifficulty } from '../types/game';
 
 export interface BonusOrb {
   mesh: THREE.Group;
@@ -180,7 +180,8 @@ export function buildRaceCircuit(
   scene: THREE.Scene,
   trackLength = 10000,
   weather: WeatherType = 'cerah',
-  finishDistance = 3000
+  finishDistance = 3000,
+  difficulty: GameDifficulty = 'medium'
 ): TrackData {
   const trackWidth = 14.5;
   const startZ = -100;
@@ -500,7 +501,7 @@ export function buildRaceCircuit(
     bonusOrbs.push(orb);
   }
 
-  // --- 10. POPULATE COMPETITOR RACE CARS ("PESERTA LAIN" - 48 CARS) ---
+  // --- 10. POPULATE COMPETITOR RACE CARS ("PESERTA LAIN") BASED ON DIFFICULTY ---
   const rivals: RivalCar[] = [];
   const rivalTypes: CarModelType[] = ['gt', 'muscle', 'cyber', 'rally', 'f1', 'prototype'];
   const rivalColors = [
@@ -508,8 +509,46 @@ export function buildRaceCircuit(
     '#ea580c', '#059669', '#4f46e5', '#db2777', '#ca8a04', '#0891b2',
   ];
 
-  for (let i = 0; i < 48; i++) {
-    const rz = 40 + i * 85;
+  // Difficulty configurations:
+  // - Easy: 28 cars spaced ~135m, base speed 115-155 km/h, calm lane change
+  // - Medium: 48 cars spaced ~85m, base speed 135-215 km/h, balanced lane change
+  // - Hard: 75 cars spaced ~52m, base speed 165-255 km/h, fast & frequent lane changes
+  const diffConfig = {
+    easy: {
+      count: 28,
+      spacing: 135,
+      minSpeed: 115,
+      speedSpread: 40,
+      laneTimerMin: 3.5,
+      laneTimerSpread: 3.0,
+    },
+    medium: {
+      count: 48,
+      spacing: 85,
+      minSpeed: 135,
+      speedSpread: 80,
+      laneTimerMin: 2.0,
+      laneTimerSpread: 2.5,
+    },
+    hard: {
+      count: 75,
+      spacing: 52,
+      minSpeed: 165,
+      speedSpread: 90,
+      laneTimerMin: 1.2,
+      laneTimerSpread: 1.8,
+    },
+  }[difficulty] || {
+    count: 48,
+    spacing: 85,
+    minSpeed: 135,
+    speedSpread: 80,
+    laneTimerMin: 2.0,
+    laneTimerSpread: 2.5,
+  };
+
+  for (let i = 0; i < diffConfig.count; i++) {
+    const rz = 45 + i * diffConfig.spacing;
     const rx = getTrackXAtZ(rz) + (Math.random() * 8.5 - 4.25);
     const type = rivalTypes[i % rivalTypes.length];
     const color = rivalColors[i % rivalColors.length];
@@ -522,9 +561,9 @@ export function buildRaceCircuit(
       modelResult,
       x: rx,
       z: rz,
-      baseSpeed: 135 + Math.random() * 85,
+      baseSpeed: diffConfig.minSpeed + Math.random() * diffConfig.speedSpread,
       targetX: rx,
-      laneChangeTimer: 2 + Math.random() * 3,
+      laneChangeTimer: diffConfig.laneTimerMin + Math.random() * diffConfig.laneTimerSpread,
     });
   }
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { GameMode, PlayerState, GameControls, WeatherType } from '../types/game';
+import { GameMode, PlayerState, GameControls, WeatherType, GameDifficulty } from '../types/game';
 import { buildProceduralCar, ProceduralCarResult } from './carModels';
 import { buildRaceCircuit, TrackData, BonusOrb } from './trackEnvironment';
 import { NitroParticleTrail } from './nitroParticles';
@@ -18,9 +18,11 @@ interface RacingCanvasProps {
   p1Controls: GameControls;
   p2Controls?: GameControls;
   isPaused: boolean;
+  isCountdown?: boolean;
   isP1Answering?: boolean;
   isP2Answering?: boolean;
   weather?: WeatherType;
+  difficulty?: GameDifficulty;
   targetDistanceMeters?: number;
   totalQuestions?: number;
 }
@@ -36,9 +38,11 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
   p1Controls,
   p2Controls,
   isPaused,
+  isCountdown = false,
   isP1Answering = false,
   isP2Answering = false,
   weather = 'cerah',
+  difficulty = 'medium',
   targetDistanceMeters = 3000,
   totalQuestions = 4,
 }) => {
@@ -52,6 +56,9 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
 
   const pausedRef = useRef(isPaused);
   pausedRef.current = isPaused;
+
+  const isCountdownRef = useRef(isCountdown);
+  isCountdownRef.current = isCountdown;
 
   const answeringRef = useRef({ p1: isP1Answering, p2: isP2Answering });
   answeringRef.current = { p1: isP1Answering, p2: isP2Answering };
@@ -118,7 +125,7 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
     scene.add(sunLight);
 
     // Build the expansive circuit with mountains and finish line
-    const trackData: TrackData = buildRaceCircuit(scene, 10000, weather, targetDistanceMeters);
+    const trackData: TrackData = buildRaceCircuit(scene, 10000, weather, targetDistanceMeters, difficulty);
 
     // Cameras
     const aspect = container.clientWidth / container.clientHeight;
@@ -204,21 +211,70 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
         return;
       }
 
+      // --- COUNTDOWN FREEZE: 3, 2, 1, GO! ---
+      if (isCountdownRef.current) {
+        sound.updateEnginePitch(0.08, false);
+
+        // Keep cars poised at starting line with subtle idling vibration
+        const idleVibe = Math.sin(clock.getElapsedTime() * 30) * 0.01;
+        p1CarResult.root.position.set(p1Sim.x, idleVibe, 0);
+        p1CarResult.root.rotation.set(0, 0, 0);
+        camera1.position.set(p1Sim.x, 2.5, -6.8);
+        _camTarget.set(p1Sim.x, 1.2, 10);
+        camera1.lookAt(_camTarget);
+        camera1.fov = 65;
+        camera1.updateProjectionMatrix();
+
+        if (mode === 'battle' && p2CarResult) {
+          p2CarResult.root.position.set(p2Sim.x, idleVibe, 0);
+          p2CarResult.root.rotation.set(0, 0, 0);
+          camera2.position.set(p2Sim.x, 2.5, -6.8);
+          _camTarget.set(p2Sim.x, 1.2, 10);
+          camera2.lookAt(_camTarget);
+          camera2.fov = 65;
+          camera2.updateProjectionMatrix();
+        }
+
+        // Render starting grid viewports
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (mode === 'battle') {
+          const halfW = Math.floor(w / 2);
+          renderer.setScissorTest(true);
+          camera1.aspect = halfW / h;
+          camera1.updateProjectionMatrix();
+          renderer.setViewport(0, 0, halfW, h);
+          renderer.setScissor(0, 0, halfW, h);
+          renderer.render(scene, camera1);
+
+          camera2.aspect = halfW / h;
+          camera2.updateProjectionMatrix();
+          renderer.setViewport(halfW, 0, halfW, h);
+          renderer.setScissor(halfW, 0, halfW, h);
+          renderer.render(scene, camera2);
+        } else {
+          renderer.setScissorTest(false);
+          camera1.aspect = w / h;
+          camera1.updateProjectionMatrix();
+          renderer.setViewport(0, 0, w, h);
+          renderer.render(scene, camera1);
+        }
+        return;
+      }
+
       const p1IsAnswering = answeringRef.current.p1;
       const p2IsAnswering = answeringRef.current.p2;
 
       // --- 1. SIMULATE PLAYER 1 (LAYAR KIRI) ---
       if (!p1Sim.isGameOver) {
-        const maxSpd = p1State.car.type === 'f1' ? 320 : p1State.car.type === 'cyber' ? 310 : 290;
-        const accelRate = 85;
-        const brakeRate = 180;
-        const naturalFriction = 35;
+        const baseMaxSpd = p1State.car.type === 'f1' ? 320 : p1State.car.type === 'cyber' ? 310 : 290;
+        const diffSpeedMult = difficulty === 'easy' ? 0.85 : difficulty === 'hard' ? 1.15 : 1.0;
+        const maxSpd = Math.round(baseMaxSpd * diffSpeedMult);
 
         if (p1IsAnswering) {
           // Player 1 is answering question on Layar Kiri:
           // Safe cruise, maintain lane, temporary shield, NO control interference with P2!
-          p1Sim.isNitro = false;
-          p1Sim.speed = THREE.MathUtils.damp(p1Sim.speed, 35, 4, dt);
+          p1Sim.speed = THREE.MathUtils.damp(p1Sim.speed, 40, 4, dt);
           p1Sim.steerAngle = THREE.MathUtils.damp(p1Sim.steerAngle, 0, 8, dt);
           p1Sim.invulnerableTimer = Math.max(p1Sim.invulnerableTimer, 1.5);
 
@@ -239,12 +295,6 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
             });
           });
 
-          // Disable nitro flames during question
-          p1CarResult.nitroFlames.forEach((f) => {
-            f.visible = false;
-          });
-          p1NitroTrail.update(dt, false, p1Sim.x, 0, p1Sim.z);
-
           const camDist = 6.8 + (p1Sim.speed / maxSpd) * 1.8;
           const camHeight = 2.4 + (p1Sim.speed / maxSpd) * 0.4;
           camera1.position.set(
@@ -257,67 +307,27 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
           camera1.fov = 65;
           camera1.updateProjectionMatrix();
         } else {
-          // Normal active racing simulation for P1
+          // Normal active racing simulation for P1:
+          // AUTO-ACCELERATION: The car keeps moving forward and accelerates automatically
+          // unless colliding with obstacles or walls!
           const ctrl1 = controlsRef.current.p1;
+          const diffAccelMult = difficulty === 'easy' ? 0.8 : difficulty === 'hard' ? 1.25 : 1.0;
+          const rawAccel = p1Sim.speed < 120 ? 55 : p1Sim.speed < 220 ? 30 : 15;
+          const accelRate = rawAccel * diffAccelMult;
+          p1Sim.speed = Math.min(maxSpd, p1Sim.speed + accelRate * dt);
 
-          // Nitro handling & Visual Particle Emitter
-          if (ctrl1.nitro && p1Sim.nitro > 0) {
-            p1Sim.isNitro = true;
-            p1Sim.nitro = Math.max(0, p1Sim.nitro - dt * 25);
-            p1Sim.speed = Math.min(maxSpd * 1.25, p1Sim.speed + accelRate * 2.0 * dt);
-            sound.playNitro();
-
-            // Spawn dynamic fire / plasma particles from tail exhaust
-            p1NitroTrail.emit(p1Sim.x, 0, p1Sim.z, p1Sim.speed, p1Sim.steerAngle, 4);
-
-            // Animate 3D nitro exhaust flame cones with jitter and scaling
-            p1CarResult.nitroFlames.forEach((flame, fIdx) => {
-              flame.visible = true;
-              const flicker =
-                1.0 +
-                Math.sin(clock.getElapsedTime() * 55 + fIdx) * 0.25 +
-                (Math.random() - 0.5) * 0.25;
-              flame.scale.set(
-                1.0 + (Math.random() - 0.5) * 0.15,
-                1.0 + (Math.random() - 0.5) * 0.15,
-                flicker * 1.6
-              );
-            });
-          } else {
-            p1Sim.isNitro = false;
-            p1CarResult.nitroFlames.forEach((flame) => {
-              flame.visible = false;
-            });
-            if (p1Sim.speed > 50 && p1Sim.nitro < 100) {
-              p1Sim.nitro = Math.min(100, p1Sim.nitro + dt * 4);
-            }
-          }
-
-          // Update active particle positions, drag, decay, and dynamic ground glow
-          p1NitroTrail.update(dt, p1Sim.isNitro, p1Sim.x, 0, p1Sim.z);
-
-          // Accel / Brake
-          if (ctrl1.accelerate) {
-            p1Sim.speed = Math.min(maxSpd, p1Sim.speed + accelRate * dt);
-          } else if (ctrl1.brake) {
-            p1Sim.speed = Math.max(-30, p1Sim.speed - brakeRate * dt);
-          } else {
-            if (p1Sim.speed > 0) p1Sim.speed = Math.max(0, p1Sim.speed - naturalFriction * dt);
-            else if (p1Sim.speed < 0) p1Sim.speed = Math.min(0, p1Sim.speed + naturalFriction * dt);
-          }
-
-          // Steering (CORRECT DIRECTIONS: KIRI moves left +X, KANAN moves right -X)
-          const steerSpeed = 2.8;
+          // Steering (KIRI moves left +X, KANAN moves right -X)
+          const steerSpeed = 3.2;
           if (ctrl1.steerLeft) {
-            p1Sim.steerAngle = THREE.MathUtils.damp(p1Sim.steerAngle, 0.45, 10, dt);
-            p1Sim.x += steerSpeed * (p1Sim.speed / 100 + 0.3) * 6 * dt;
+            p1Sim.steerAngle = THREE.MathUtils.damp(p1Sim.steerAngle, 0.45, 12, dt);
+            p1Sim.x += steerSpeed * (p1Sim.speed / 100 + 0.35) * 6 * dt;
             if (p1Sim.speed > 160) sound.playTireSkid();
           } else if (ctrl1.steerRight) {
-            p1Sim.steerAngle = THREE.MathUtils.damp(p1Sim.steerAngle, -0.45, 10, dt);
-            p1Sim.x -= steerSpeed * (p1Sim.speed / 100 + 0.3) * 6 * dt;
+            p1Sim.steerAngle = THREE.MathUtils.damp(p1Sim.steerAngle, -0.45, 12, dt);
+            p1Sim.x -= steerSpeed * (p1Sim.speed / 100 + 0.35) * 6 * dt;
             if (p1Sim.speed > 160) sound.playTireSkid();
           } else {
-            p1Sim.steerAngle = THREE.MathUtils.damp(p1Sim.steerAngle, 0, 8, dt);
+            p1Sim.steerAngle = THREE.MathUtils.damp(p1Sim.steerAngle, 0, 9, dt);
           }
 
           const worldSpeed = (p1Sim.speed / 3.6) * 1.5;
@@ -360,31 +370,36 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
           _camTarget.set(p1Sim.x, 1.2, p1Sim.z + 10);
           camera1.lookAt(_camTarget);
 
-          camera1.fov = 65 + (p1Sim.speed / maxSpd) * 12 + (p1Sim.isNitro ? 8 : 0);
+          camera1.fov = 65 + (p1Sim.speed / maxSpd) * 12;
           camera1.updateProjectionMatrix();
 
-          // Track boundary check
+          // Track boundary collision check: drops speed sharply if player scrapes outer barriers!
           const trackCenter = trackData.getTrackXAtZ(p1Sim.z);
           const distFromCenter = Math.abs(p1Sim.x - trackCenter);
           if (distFromCenter > trackData.trackWidth / 2 - 0.5) {
-            p1Sim.speed = Math.max(40, p1Sim.speed * 0.94);
-            p1Sim.shake = 0.2;
+            p1Sim.speed = Math.max(45, p1Sim.speed * 0.90);
+            p1Sim.shake = 0.35;
+            p1Sim.x = THREE.MathUtils.damp(
+              p1Sim.x,
+              trackCenter + Math.sign(p1Sim.x - trackCenter) * (trackData.trackWidth / 2 - 0.7),
+              12,
+              dt
+            );
+            sound.playCrash();
           }
         }
       }
 
       // --- 2. SIMULATE PLAYER 2 (LAYAR KANAN) ---
       if (mode === 'battle' && p2CarResult && p2State && !p2Sim.isGameOver) {
-        const maxSpd = 300;
-        const accelRate = 85;
-        const brakeRate = 180;
-        const naturalFriction = 35;
+        const p2BaseMaxSpd = p2State.car.type === 'f1' ? 320 : p2State.car.type === 'cyber' ? 310 : 290;
+        const p2DiffSpeedMult = difficulty === 'easy' ? 0.85 : difficulty === 'hard' ? 1.15 : 1.0;
+        const maxSpd = Math.round(p2BaseMaxSpd * p2DiffSpeedMult);
 
         if (p2IsAnswering) {
           // Player 2 is answering on Layar Kanan:
           // Safe cruise, temporary shield, NO disruption to Player 1's racing!
-          p2Sim.isNitro = false;
-          p2Sim.speed = THREE.MathUtils.damp(p2Sim.speed, 35, 4, dt);
+          p2Sim.speed = THREE.MathUtils.damp(p2Sim.speed, 40, 4, dt);
           p2Sim.steerAngle = THREE.MathUtils.damp(p2Sim.steerAngle, 0, 8, dt);
           p2Sim.invulnerableTimer = Math.max(p2Sim.invulnerableTimer, 1.5);
 
@@ -405,13 +420,6 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
             });
           });
 
-          p2CarResult.nitroFlames.forEach((f) => {
-            f.visible = false;
-          });
-          if (p2NitroTrail) {
-            p2NitroTrail.update(dt, false, p2Sim.x, 0, p2Sim.z);
-          }
-
           const camDist2 = 6.8 + (p2Sim.speed / maxSpd) * 1.8;
           const camHeight2 = 2.4 + (p2Sim.speed / maxSpd) * 0.4;
           camera2.position.set(
@@ -424,7 +432,7 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
           camera2.fov = 65;
           camera2.updateProjectionMatrix();
         } else {
-          // Normal active racing simulation for P2
+          // Normal active racing simulation for P2 with auto-acceleration
           const ctrl2 = controlsRef.current.p2 || {
             steerLeft: false,
             steerRight: false,
@@ -433,60 +441,20 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
             nitro: false,
           };
 
-          // Nitro handling & Visual Particle Emitter for P2
-          if (ctrl2.nitro && p2Sim.nitro > 0) {
-            p2Sim.isNitro = true;
-            p2Sim.nitro = Math.max(0, p2Sim.nitro - dt * 25);
-            p2Sim.speed = Math.min(maxSpd * 1.25, p2Sim.speed + accelRate * 2.0 * dt);
+          const p2DiffAccelMult = difficulty === 'easy' ? 0.8 : difficulty === 'hard' ? 1.25 : 1.0;
+          const rawAccel2 = p2Sim.speed < 120 ? 55 : p2Sim.speed < 220 ? 30 : 15;
+          const accelRate2 = rawAccel2 * p2DiffAccelMult;
+          p2Sim.speed = Math.min(maxSpd, p2Sim.speed + accelRate2 * dt);
 
-            if (p2NitroTrail) {
-              p2NitroTrail.emit(p2Sim.x, 0, p2Sim.z, p2Sim.speed, p2Sim.steerAngle, 4);
-            }
-
-            p2CarResult.nitroFlames.forEach((flame, fIdx) => {
-              flame.visible = true;
-              const flicker =
-                1.0 +
-                Math.sin(clock.getElapsedTime() * 55 + fIdx) * 0.25 +
-                (Math.random() - 0.5) * 0.25;
-              flame.scale.set(
-                1.0 + (Math.random() - 0.5) * 0.15,
-                1.0 + (Math.random() - 0.5) * 0.15,
-                flicker * 1.6
-              );
-            });
-          } else {
-            p2Sim.isNitro = false;
-            p2CarResult.nitroFlames.forEach((flame) => {
-              flame.visible = false;
-            });
-            if (p2Sim.speed > 50 && p2Sim.nitro < 100) {
-              p2Sim.nitro = Math.min(100, p2Sim.nitro + dt * 4);
-            }
-          }
-
-          if (p2NitroTrail) {
-            p2NitroTrail.update(dt, p2Sim.isNitro, p2Sim.x, 0, p2Sim.z);
-          }
-
-          if (ctrl2.accelerate) {
-            p2Sim.speed = Math.min(maxSpd, p2Sim.speed + accelRate * dt);
-          } else if (ctrl2.brake) {
-            p2Sim.speed = Math.max(-30, p2Sim.speed - brakeRate * dt);
-          } else {
-            if (p2Sim.speed > 0) p2Sim.speed = Math.max(0, p2Sim.speed - naturalFriction * dt);
-            else if (p2Sim.speed < 0) p2Sim.speed = Math.min(0, p2Sim.speed + naturalFriction * dt);
-          }
-
-          const steerSpeed = 2.8;
+          const steerSpeed = 3.2;
           if (ctrl2.steerLeft) {
-            p2Sim.steerAngle = THREE.MathUtils.damp(p2Sim.steerAngle, 0.45, 10, dt);
-            p2Sim.x += steerSpeed * (p2Sim.speed / 100 + 0.3) * 6 * dt;
+            p2Sim.steerAngle = THREE.MathUtils.damp(p2Sim.steerAngle, 0.45, 12, dt);
+            p2Sim.x += steerSpeed * (p2Sim.speed / 100 + 0.35) * 6 * dt;
           } else if (ctrl2.steerRight) {
-            p2Sim.steerAngle = THREE.MathUtils.damp(p2Sim.steerAngle, -0.45, 10, dt);
-            p2Sim.x -= steerSpeed * (p2Sim.speed / 100 + 0.3) * 6 * dt;
+            p2Sim.steerAngle = THREE.MathUtils.damp(p2Sim.steerAngle, -0.45, 12, dt);
+            p2Sim.x -= steerSpeed * (p2Sim.speed / 100 + 0.35) * 6 * dt;
           } else {
-            p2Sim.steerAngle = THREE.MathUtils.damp(p2Sim.steerAngle, 0, 8, dt);
+            p2Sim.steerAngle = THREE.MathUtils.damp(p2Sim.steerAngle, 0, 9, dt);
           }
 
           const worldSpeed2 = (p2Sim.speed / 3.6) * 1.5;
@@ -529,15 +497,22 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
           _camTarget.set(p2Sim.x, 1.2, p2Sim.z + 10);
           camera2.lookAt(_camTarget);
 
-          camera2.fov = 65 + (p2Sim.speed / maxSpd) * 12 + (p2Sim.isNitro ? 8 : 0);
+          camera2.fov = 65 + (p2Sim.speed / maxSpd) * 12;
           camera2.updateProjectionMatrix();
 
-          // Track boundary check for P2
+          // Track boundary collision check for P2
           const trackCenter2 = trackData.getTrackXAtZ(p2Sim.z);
           const distFromCenter2 = Math.abs(p2Sim.x - trackCenter2);
           if (distFromCenter2 > trackData.trackWidth / 2 - 0.5) {
-            p2Sim.speed = Math.max(40, p2Sim.speed * 0.94);
-            p2Sim.shake = 0.2;
+            p2Sim.speed = Math.max(45, p2Sim.speed * 0.90);
+            p2Sim.shake = 0.35;
+            p2Sim.x = THREE.MathUtils.damp(
+              p2Sim.x,
+              trackCenter2 + Math.sign(p2Sim.x - trackCenter2) * (trackData.trackWidth / 2 - 0.7),
+              12,
+              dt
+            );
+            sound.playCrash();
           }
         }
 
@@ -558,11 +533,10 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
         const p1Norm = p1IsAnswering ? 0.15 : p1Sim.speed / 320;
         const p2Norm = p2IsAnswering ? 0.15 : p2Sim.speed / 300;
         const maxNorm = Math.max(p1Norm, p2Norm);
-        const activeNitro = (!p1IsAnswering && p1Sim.isNitro) || (!p2IsAnswering && p2Sim.isNitro);
-        sound.updateEnginePitch(maxNorm, activeNitro);
+        sound.updateEnginePitch(maxNorm, false);
       } else {
         const maxSpd = p1State.car.type === 'f1' ? 320 : p1State.car.type === 'cyber' ? 310 : 290;
-        sound.updateEnginePitch(p1Sim.speed / maxSpd, p1Sim.isNitro);
+        sound.updateEnginePitch(p1Sim.speed / maxSpd, false);
       }
 
       // --- 3. ANIMATE COMPETITOR CARS ("PESERTA LAIN") ---
@@ -692,8 +666,8 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
       callbacksRef.current.onUpdateP1((prev) => ({
         ...prev,
         speed: Math.round(p1Sim.speed),
-        nitro: Math.round(p1Sim.nitro),
-        isNitroActive: p1Sim.isNitro,
+        nitro: 0,
+        isNitroActive: false,
         distance: Math.round(p1Sim.distance),
         score: p1Sim.score,
         lives: p1Sim.lives,
@@ -704,8 +678,8 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
         callbacksRef.current.onUpdateP2((prev) => ({
           ...prev,
           speed: Math.round(p2Sim.speed),
-          nitro: Math.round(p2Sim.nitro),
-          isNitroActive: p2Sim.isNitro,
+          nitro: 0,
+          isNitroActive: false,
           distance: Math.round(p2Sim.distance),
           score: p2Sim.score,
           lives: p2Sim.lives,

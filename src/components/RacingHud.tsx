@@ -1,6 +1,6 @@
 import React from 'react';
 import { PlayerState, GameControls } from '../types/game';
-import { Zap, Heart, Trophy, Flag, Volume2, VolumeX } from 'lucide-react';
+import { Heart, Trophy, Flag, Volume2, VolumeX, Gauge } from 'lucide-react';
 
 interface RacingHudProps {
   playerState: PlayerState;
@@ -113,123 +113,64 @@ export const RacingHud: React.FC<RacingHudProps> = ({
         </div>
       </div>
 
-      {/* Speedometer Cluster & Touch Controls (Bottom Dock) */}
-      <div className="flex items-end justify-between w-full">
-        {/* Left Side: Steering Touch Buttons */}
-        <div className="pointer-events-auto flex items-center gap-1.5 pb-1">
+      {/* Simplified Reflex Controls: Only Left (◄ KIRI) and Right (► KANAN), Car Auto-Accelerates */}
+      <div className="flex items-end justify-between w-full px-1 pb-1">
+        {/* Left Side: Steering Left Touch Button */}
+        <div className="pointer-events-auto">
           <button
             onTouchStart={(e) => { e.preventDefault(); onControlChange('steerLeft', true); }}
             onTouchEnd={(e) => { e.preventDefault(); onControlChange('steerLeft', false); }}
             onMouseDown={() => onControlChange('steerLeft', true)}
             onMouseUp={() => onControlChange('steerLeft', false)}
             onMouseLeave={() => onControlChange('steerLeft', false)}
-            className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex flex-col items-center justify-center font-bold border transition-all active:scale-95 shadow-lg select-none ${
+            className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex flex-col items-center justify-center font-black border-2 transition-all active:scale-95 shadow-2xl select-none cursor-pointer ${
               controls.steerLeft
-                ? isP1 ? 'bg-cyan-500 text-slate-950 border-cyan-300' : 'bg-amber-500 text-slate-950 border-amber-300'
-                : 'bg-slate-900/90 text-cyan-400 border-cyan-500/40 hover:bg-slate-800'
+                ? isP1
+                  ? 'bg-cyan-500 text-slate-950 border-cyan-200 shadow-[0_0_20px_rgba(6,182,212,0.8)] scale-95'
+                  : 'bg-amber-500 text-slate-950 border-amber-200 shadow-[0_0_20px_rgba(245,158,11,0.8)] scale-95'
+                : 'bg-slate-900/95 text-cyan-400 border-cyan-500/50 hover:bg-slate-800/95 hover:border-cyan-400'
             }`}
           >
-            <span className="text-xl leading-none">◄</span>
-            <span className="text-[9px] uppercase tracking-wider">KIRI</span>
+            <span className="text-2xl sm:text-3xl leading-none">◄</span>
+            <span className="text-[10px] sm:text-xs font-black tracking-wider uppercase mt-0.5">KIRI</span>
           </button>
+        </div>
 
+        {/* Center: Digital Speedometer with Auto-Acceleration indicator */}
+        <div className="flex flex-col items-center pb-0.5">
+          <div className="bg-slate-900/95 border-2 border-slate-700/85 px-4 sm:px-6 py-2 rounded-2xl shadow-2xl flex flex-col items-center backdrop-blur-md">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight tabular-nums text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">
+                {playerState.speed}
+              </span>
+              <span className="text-xs font-black text-cyan-400 uppercase tracking-widest">KM/H</span>
+            </div>
+
+            <div className="mt-1 flex items-center gap-1.5 text-[9px] font-bold text-emerald-400 tracking-wider uppercase">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+              <span>Jalan Otomatis</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side: Steering Right Touch Button */}
+        <div className="pointer-events-auto">
           <button
             onTouchStart={(e) => { e.preventDefault(); onControlChange('steerRight', true); }}
             onTouchEnd={(e) => { e.preventDefault(); onControlChange('steerRight', false); }}
             onMouseDown={() => onControlChange('steerRight', true)}
             onMouseUp={() => onControlChange('steerRight', false)}
             onMouseLeave={() => onControlChange('steerRight', false)}
-            className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex flex-col items-center justify-center font-bold border transition-all active:scale-95 shadow-lg select-none ${
+            className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex flex-col items-center justify-center font-black border-2 transition-all active:scale-95 shadow-2xl select-none cursor-pointer ${
               controls.steerRight
-                ? isP1 ? 'bg-cyan-500 text-slate-950 border-cyan-300' : 'bg-amber-500 text-slate-950 border-amber-300'
-                : 'bg-slate-900/90 text-cyan-400 border-cyan-500/40 hover:bg-slate-800'
+                ? isP1
+                  ? 'bg-cyan-500 text-slate-950 border-cyan-200 shadow-[0_0_20px_rgba(6,182,212,0.8)] scale-95'
+                  : 'bg-amber-500 text-slate-950 border-amber-200 shadow-[0_0_20px_rgba(245,158,11,0.8)] scale-95'
+                : 'bg-slate-900/95 text-cyan-400 border-cyan-500/50 hover:bg-slate-800/95 hover:border-cyan-400'
             }`}
           >
-            <span className="text-xl leading-none">►</span>
-            <span className="text-[9px] uppercase tracking-wider">KANAN</span>
-          </button>
-        </div>
-
-        {/* Center: Speedometer & Nitro Bar */}
-        <div className="flex flex-col items-center pb-1">
-          <div className="bg-slate-900/95 border border-slate-700/80 px-2.5 sm:px-3 py-1.5 rounded-xl shadow-2xl flex flex-col items-center">
-            <div className="flex items-baseline gap-1">
-              <span className={`text-2xl sm:text-3xl font-black font-mono tracking-tight tabular-nums ${
-                playerState.isNitroActive ? 'text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]' : 'text-white'
-              }`}>
-                {playerState.speed}
-              </span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">KM/H</span>
-            </div>
-
-            <div className="w-20 sm:w-28 mt-0.5 flex flex-col gap-0.5">
-              <div className="flex justify-between items-center text-[8px] font-bold uppercase tracking-wider">
-                <span className="flex items-center gap-0.5 text-amber-400">
-                  <Zap className="w-2 h-2 fill-amber-400" /> NITRO
-                </span>
-                <span className="text-slate-300 font-mono">{playerState.nitro}%</span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-700">
-                <div
-                  className="h-full bg-gradient-to-r from-amber-500 to-rose-500 transition-all duration-100"
-                  style={{ width: `${playerState.nitro}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Side: Nitro, Brake & Gas Touch Buttons */}
-        <div className="pointer-events-auto flex items-center gap-1.5 pb-1">
-          {/* Nitro */}
-          <button
-            onTouchStart={(e) => { e.preventDefault(); onControlChange('nitro', true); }}
-            onTouchEnd={(e) => { e.preventDefault(); onControlChange('nitro', false); }}
-            onMouseDown={() => onControlChange('nitro', true)}
-            onMouseUp={() => onControlChange('nitro', false)}
-            onMouseLeave={() => onControlChange('nitro', false)}
-            className={`w-11 h-12 sm:w-12 sm:h-14 rounded-xl flex flex-col items-center justify-center font-bold border transition-all active:scale-95 shadow-lg select-none ${
-              controls.nitro
-                ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.8)]'
-                : 'bg-slate-900/90 text-amber-400 border-amber-500/40 hover:bg-slate-800'
-            }`}
-          >
-            <Zap className="w-4 h-4 fill-current" />
-            <span className="text-[8px] uppercase tracking-wider">NITRO</span>
-          </button>
-
-          {/* Brake */}
-          <button
-            onTouchStart={(e) => { e.preventDefault(); onControlChange('brake', true); }}
-            onTouchEnd={(e) => { e.preventDefault(); onControlChange('brake', false); }}
-            onMouseDown={() => onControlChange('brake', true)}
-            onMouseUp={() => onControlChange('brake', false)}
-            onMouseLeave={() => onControlChange('brake', false)}
-            className={`w-11 h-12 sm:w-13 sm:h-14 rounded-xl flex flex-col items-center justify-center font-bold border transition-all active:scale-95 shadow-lg select-none ${
-              controls.brake
-                ? 'bg-rose-500 text-white border-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.6)]'
-                : 'bg-slate-900/90 text-rose-400 border-rose-500/40 hover:bg-slate-800'
-            }`}
-          >
-            <span className="text-xl leading-none">▼</span>
-            <span className="text-[9px] uppercase tracking-wider">REM</span>
-          </button>
-
-          {/* Gas */}
-          <button
-            onTouchStart={(e) => { e.preventDefault(); onControlChange('accelerate', true); }}
-            onTouchEnd={(e) => { e.preventDefault(); onControlChange('accelerate', false); }}
-            onMouseDown={() => onControlChange('accelerate', true)}
-            onMouseUp={() => onControlChange('accelerate', false)}
-            onMouseLeave={() => onControlChange('accelerate', false)}
-            className={`w-13 h-12 sm:w-16 sm:h-14 rounded-xl flex flex-col items-center justify-center font-bold border transition-all active:scale-95 shadow-lg select-none ${
-              controls.accelerate
-                ? 'bg-emerald-500 text-slate-950 border-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.8)]'
-                : 'bg-emerald-950/80 text-emerald-400 border-emerald-500/60 hover:bg-emerald-900'
-            }`}
-          >
-            <span className="text-xl leading-none">▲</span>
-            <span className="text-[10px] font-black uppercase tracking-wider">GAS</span>
+            <span className="text-2xl sm:text-3xl leading-none">►</span>
+            <span className="text-[10px] sm:text-xs font-black tracking-wider uppercase mt-0.5">KANAN</span>
           </button>
         </div>
       </div>

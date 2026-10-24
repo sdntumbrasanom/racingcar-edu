@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { GameMode, PlayerCarConfig, CarModelType } from '../types/game';
+import { GameMode, PlayerCarConfig, CarModelType, GameDifficulty } from '../types/game';
 import { CAR_PRESETS, COLOR_OPTIONS } from '../game/carModels';
 import { sheetService } from '../services/sheetService';
 import { CarPreview3D } from './CarPreview3D';
+import racingHeroBanner from '../assets/images/racing_hero_banner_1792809824995.jpg';
 import {
   Car,
   KeyRound,
@@ -12,6 +13,9 @@ import {
   RotateCcw,
   FileSpreadsheet,
   ExternalLink,
+  Gauge,
+  Zap,
+  Flame,
 } from 'lucide-react';
 
 interface GameSetupModalProps {
@@ -20,6 +24,7 @@ interface GameSetupModalProps {
   onStartGame: (setup: {
     mode: GameMode;
     token: string;
+    difficulty: GameDifficulty;
     p1Name: string;
     p1Car: PlayerCarConfig;
     p2Name?: string;
@@ -27,6 +32,7 @@ interface GameSetupModalProps {
   }) => void;
   initialMode: GameMode;
   initialToken?: string;
+  initialDifficulty?: GameDifficulty;
 }
 
 export const GameSetupModal: React.FC<GameSetupModalProps> = ({
@@ -35,10 +41,13 @@ export const GameSetupModal: React.FC<GameSetupModalProps> = ({
   onStartGame,
   initialMode,
   initialToken = 'BALAP-KILAT',
+  initialDifficulty = 'medium',
 }) => {
   const mode = initialMode;
   const [token, setToken] = useState<string>(initialToken);
   const [tokenInfo, setTokenInfo] = useState<{ title: string; teacherName: string; total: number } | null>(null);
+  const [isValidatingToken, setIsValidatingToken] = useState<boolean>(false);
+  const [difficulty, setDifficulty] = useState<GameDifficulty>(initialDifficulty);
 
   // Player 1 configuration (Solo / Battle Layar Kiri)
   const [p1Name, setP1Name] = useState<string>(mode === 'solo' ? 'Pembalap Juara' : 'Pembalap 1 (Kiri)');
@@ -53,18 +62,50 @@ export const GameSetupModal: React.FC<GameSetupModalProps> = ({
   // Tab for customization in Battle mode
   const [activeCarTab, setActiveCarTab] = useState<'p1' | 'p2'>('p1');
 
-  // Validate token on change
+  // Validate token on change (with instant local check and remote cross-device Apps Script fallback)
   React.useEffect(() => {
-    const qData = sheetService.getQuestionsByToken(token);
-    if (qData) {
-      setTokenInfo({
-        title: qData.title,
-        teacherName: qData.teacherName,
-        total: qData.questions.length,
-      });
-    } else {
+    let isCancelled = false;
+    const clean = token.trim().toUpperCase();
+    if (!clean) {
       setTokenInfo(null);
+      return;
     }
+
+    // 1. Immediate local check
+    const local = sheetService.getQuestionsByToken(clean);
+    if (local) {
+      setTokenInfo({
+        title: local.title,
+        teacherName: local.teacherName,
+        total: local.questions.length,
+      });
+      return;
+    }
+
+    // 2. Query remote Google Apps Script database
+    setIsValidatingToken(true);
+    sheetService
+      .getQuestionsByTokenAsync(clean)
+      .then((res) => {
+        if (isCancelled) return;
+        setIsValidatingToken(false);
+        if (res) {
+          setTokenInfo({
+            title: res.title,
+            teacherName: res.teacherName,
+            total: res.questions.length,
+          });
+        } else {
+          setTokenInfo(null);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) setIsValidatingToken(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [token]);
 
   if (!isOpen) return null;
@@ -83,6 +124,7 @@ export const GameSetupModal: React.FC<GameSetupModalProps> = ({
     onStartGame({
       mode,
       token: token.trim().toUpperCase(),
+      difficulty,
       p1Name: p1Name.trim() || (mode === 'solo' ? 'Pembalap' : 'Pembalap 1'),
       p1Car: {
         type: p1Model,
@@ -110,10 +152,31 @@ export const GameSetupModal: React.FC<GameSetupModalProps> = ({
   const activeAccent = COLOR_OPTIONS.find((c) => c.hex === activeColor)?.accent || '#ffffff';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-4xl bg-slate-900 border-2 border-cyan-500/80 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.3)] overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 overflow-hidden animate-in fade-in duration-200">
+      {/* Fullscreen Racing Circuit Background for Preparation Page */}
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <img
+          src={racingHeroBanner}
+          alt="Racing Circuit Background"
+          className="w-full h-full object-cover object-center filter brightness-[0.72] contrast-[1.15] scale-105"
+        />
+        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-[3px]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-slate-950/80" />
+      </div>
+
+      <div className="relative z-10 w-full max-w-4xl bg-slate-950/85 backdrop-blur-xl border-2 border-cyan-500/80 rounded-2xl shadow-[0_0_60px_rgba(6,182,212,0.4)] overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Subtle inner racetrack atmosphere overlay */}
+        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-25">
+          <img
+            src={racingHeroBanner}
+            alt=""
+            className="w-full h-full object-cover object-center"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-slate-950/90" />
+        </div>
+
         {/* Header */}
-        <div className="bg-gradient-to-r from-cyan-950/90 via-slate-800 to-indigo-950/90 px-6 py-4 border-b border-cyan-500/40 flex items-center justify-between shrink-0">
+        <div className="relative z-10 bg-gradient-to-r from-cyan-950/90 via-slate-900/90 to-indigo-950/90 backdrop-blur-md px-5 sm:px-6 py-3.5 sm:py-4 border-b border-cyan-500/40 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shadow ${
               mode === 'solo' ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-amber-500/20 border-amber-400 text-amber-300'
@@ -134,7 +197,7 @@ export const GameSetupModal: React.FC<GameSetupModalProps> = ({
           <button
             onClick={onClose}
             title="Kembali ke Menu Utama"
-            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border border-slate-700"
+            className="px-3 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border border-slate-700 shadow"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Menu Utama</span>
@@ -142,7 +205,7 @@ export const GameSetupModal: React.FC<GameSetupModalProps> = ({
         </div>
 
         {/* Form Container wrapping both scrollable body & footer */}
-        <form onSubmit={handleStart} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <form onSubmit={handleStart} className="relative z-10 flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Scrollable Form Body */}
           <div className="flex-1 overflow-y-auto p-5 sm:p-6 flex flex-col gap-5">
             {/* 1. Token Code from Teacher */}
@@ -183,7 +246,12 @@ export const GameSetupModal: React.FC<GameSetupModalProps> = ({
                 </div>
               </div>
 
-              {tokenInfo ? (
+              {isValidatingToken ? (
+                <div className="mt-3 p-3 rounded-xl bg-cyan-950/40 border border-cyan-500/40 flex items-center gap-2 text-xs text-cyan-300">
+                  <div className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span>Memeriksa token ke Database Google Spreadsheet / Apps Script...</span>
+                </div>
+              ) : tokenInfo ? (
                 <div className="mt-3 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/60 flex items-center justify-between text-xs text-emerald-300">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -197,9 +265,113 @@ export const GameSetupModal: React.FC<GameSetupModalProps> = ({
                 </div>
               ) : (
                 <div className="mt-3 p-3 rounded-xl bg-amber-950/40 border border-amber-600/40 text-xs text-amber-300">
-                  ⚠️ Token belum terdaftar. Pilih paket soal bawaan di atas atau buat token di Portal Guru.
+                  ⚠️ Token belum terdaftar. Masukkan token dari guru atau pilih paket soal di atas.
                 </div>
               )}
+            </div>
+
+            {/* 2. Race Difficulty Selector (Easy, Medium, Hard) */}
+            <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Gauge className="w-4 h-4 text-amber-400" /> 2. Tingkat Kesulitan (Difficulty)
+                </label>
+                <span className="text-[11px] text-slate-400">
+                  Mengatur kepadatan lalu lintas kompetitor & kecepatan mobil
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Easy */}
+                <button
+                  type="button"
+                  onClick={() => setDifficulty('easy')}
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                    difficulty === 'easy'
+                      ? 'bg-emerald-950/70 border-emerald-400 text-white shadow-[0_0_20px_rgba(16,185,129,0.35)] ring-1 ring-emerald-400'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-black text-xs uppercase tracking-wide flex items-center gap-1.5 text-emerald-400">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        🟢 Mudah
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-800">
+                        Top ~260 km/h
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-snug">
+                      Trafik lengang (28 mobil), laju santai. Cocok untuk siswa pemula.
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400">Kepadatan:</span>
+                    <span className="font-bold text-emerald-400">Lengang</span>
+                  </div>
+                </button>
+
+                {/* Medium */}
+                <button
+                  type="button"
+                  onClick={() => setDifficulty('medium')}
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                    difficulty === 'medium'
+                      ? 'bg-amber-950/70 border-amber-400 text-white shadow-[0_0_20px_rgba(245,158,11,0.35)] ring-1 ring-amber-400'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-black text-xs uppercase tracking-wide flex items-center gap-1.5 text-amber-400">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                        🟡 Sedang
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/90 text-amber-300 border border-amber-800">
+                        Rekomendasi
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-snug">
+                      Trafik seimbang (48 mobil), kecepatan s/d 315 km/h. Standar Grand Prix.
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400">Kepadatan:</span>
+                    <span className="font-bold text-amber-400">Standar</span>
+                  </div>
+                </button>
+
+                {/* Hard */}
+                <button
+                  type="button"
+                  onClick={() => setDifficulty('hard')}
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                    difficulty === 'hard'
+                      ? 'bg-rose-950/70 border-rose-500 text-white shadow-[0_0_20px_rgba(244,63,94,0.35)] ring-1 ring-rose-400'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-black text-xs uppercase tracking-wide flex items-center gap-1.5 text-rose-400">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                        🔴 Sulit
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-950/90 text-rose-300 border border-rose-800">
+                        Top ~360 km/h
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-snug">
+                      Trafik padat & agresif (75 mobil), akselerasi kilat. Butuh refleks tinggi!
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400">Kepadatan:</span>
+                    <span className="font-bold text-rose-400">Sangat Padat</span>
+                  </div>
+                </button>
+              </div>
             </div>
 
             {/* 3. Live 3D Car Showroom Preview & Customization */}
@@ -373,7 +545,7 @@ export const GameSetupModal: React.FC<GameSetupModalProps> = ({
           </div>
 
           {/* Pinned Bottom Action Footer inside the Form */}
-          <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-3 shrink-0">
+          <div className="p-3.5 sm:p-4 bg-slate-950/90 backdrop-blur-md border-t border-slate-800/80 flex items-center justify-between gap-3 shrink-0">
             <button
               type="button"
               onClick={onClose}
