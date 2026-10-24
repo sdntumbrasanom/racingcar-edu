@@ -265,6 +265,9 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
       const p1IsAnswering = answeringRef.current.p1;
       const p2IsAnswering = answeringRef.current.p2;
 
+      let p1IsOffTrack = false;
+      let p2IsOffTrack = false;
+
       // --- 1. SIMULATE PLAYER 1 (LAYAR KIRI) ---
       if (!p1Sim.isGameOver) {
         const baseMaxSpd = p1State.car.type === 'f1' ? 320 : p1State.car.type === 'cyber' ? 310 : 290;
@@ -308,24 +311,38 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
           camera1.updateProjectionMatrix();
         } else {
           // Normal active racing simulation for P1:
-          // AUTO-ACCELERATION: The car keeps moving forward and accelerates automatically
-          // unless colliding with obstacles or walls!
+          // Check if car has gone off-track beyond the apex kerb limits
+          const trackCenter = trackData.getTrackXAtZ(p1Sim.z);
+          const distFromCenter = Math.abs(p1Sim.x - trackCenter);
+          const trackEdge = trackData.trackWidth / 2 + 0.85; // Outside edge of kerb
+          p1IsOffTrack = distFromCenter > trackEdge;
+
           const ctrl1 = controlsRef.current.p1;
-          const diffAccelMult = difficulty === 'easy' ? 0.8 : difficulty === 'hard' ? 1.25 : 1.0;
-          const rawAccel = p1Sim.speed < 120 ? 55 : p1Sim.speed < 220 ? 30 : 15;
-          const accelRate = rawAccel * diffAccelMult;
-          p1Sim.speed = Math.min(maxSpd, p1Sim.speed + accelRate * dt);
+
+          if (p1IsOffTrack) {
+            // OFF-TRACK: Mobil dibiarkan keluar lintasan di atas rumput/kerikil,
+            // namun hambatan permukaan rumput/kerikil menurunkan kecepatan secara drastis (damp to ~50 km/h)
+            p1Sim.speed = THREE.MathUtils.damp(p1Sim.speed, 50, 3.2, dt);
+            p1Sim.shake = THREE.MathUtils.damp(p1Sim.shake, 0.22, 6, dt);
+          } else {
+            // ON-TRACK: Akselerasi otomatis normal hingga kecepatan maksimum
+            const diffAccelMult = difficulty === 'easy' ? 0.8 : difficulty === 'hard' ? 1.25 : 1.0;
+            const rawAccel = p1Sim.speed < 120 ? 55 : p1Sim.speed < 220 ? 30 : 15;
+            const accelRate = rawAccel * diffAccelMult;
+            p1Sim.speed = Math.min(maxSpd, p1Sim.speed + accelRate * dt);
+          }
 
           // Steering (KIRI moves left +X, KANAN moves right -X)
-          const steerSpeed = 3.2;
+          // Kemudi di luar lintasan sedikit lebih berat namun tetap lincah agar mudah kembali ke lintasan
+          const steerSpeed = p1IsOffTrack ? 2.6 : 3.2;
           if (ctrl1.steerLeft) {
             p1Sim.steerAngle = THREE.MathUtils.damp(p1Sim.steerAngle, 0.45, 12, dt);
             p1Sim.x += steerSpeed * (p1Sim.speed / 100 + 0.35) * 6 * dt;
-            if (p1Sim.speed > 160) sound.playTireSkid();
+            if (p1Sim.speed > 160 && !p1IsOffTrack) sound.playTireSkid();
           } else if (ctrl1.steerRight) {
             p1Sim.steerAngle = THREE.MathUtils.damp(p1Sim.steerAngle, -0.45, 12, dt);
             p1Sim.x -= steerSpeed * (p1Sim.speed / 100 + 0.35) * 6 * dt;
-            if (p1Sim.speed > 160) sound.playTireSkid();
+            if (p1Sim.speed > 160 && !p1IsOffTrack) sound.playTireSkid();
           } else {
             p1Sim.steerAngle = THREE.MathUtils.damp(p1Sim.steerAngle, 0, 9, dt);
           }
@@ -373,15 +390,14 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
           camera1.fov = 65 + (p1Sim.speed / maxSpd) * 12;
           camera1.updateProjectionMatrix();
 
-          // Track boundary collision check: drops speed sharply if player scrapes outer barriers!
-          const trackCenter = trackData.getTrackXAtZ(p1Sim.z);
-          const distFromCenter = Math.abs(p1Sim.x - trackCenter);
-          if (distFromCenter > trackData.trackWidth / 2 - 0.5) {
-            p1Sim.speed = Math.max(45, p1Sim.speed * 0.90);
+          // Outer runoff barrier collision check: soft bumper at outer perimeter of the runoff verge!
+          const maxRunoffWidth = trackData.trackWidth / 2 + 10.8;
+          if (distFromCenter > maxRunoffWidth) {
+            p1Sim.speed = Math.max(35, p1Sim.speed * 0.85);
             p1Sim.shake = 0.35;
             p1Sim.x = THREE.MathUtils.damp(
               p1Sim.x,
-              trackCenter + Math.sign(p1Sim.x - trackCenter) * (trackData.trackWidth / 2 - 0.7),
+              trackCenter + Math.sign(p1Sim.x - trackCenter) * maxRunoffWidth,
               12,
               dt
             );
@@ -433,6 +449,11 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
           camera2.updateProjectionMatrix();
         } else {
           // Normal active racing simulation for P2 with auto-acceleration
+          const trackCenter2 = trackData.getTrackXAtZ(p2Sim.z);
+          const distFromCenter2 = Math.abs(p2Sim.x - trackCenter2);
+          const trackEdge2 = trackData.trackWidth / 2 + 0.85; // Outside edge of kerb
+          p2IsOffTrack = distFromCenter2 > trackEdge2;
+
           const ctrl2 = controlsRef.current.p2 || {
             steerLeft: false,
             steerRight: false,
@@ -441,18 +462,26 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
             nitro: false,
           };
 
-          const p2DiffAccelMult = difficulty === 'easy' ? 0.8 : difficulty === 'hard' ? 1.25 : 1.0;
-          const rawAccel2 = p2Sim.speed < 120 ? 55 : p2Sim.speed < 220 ? 30 : 15;
-          const accelRate2 = rawAccel2 * p2DiffAccelMult;
-          p2Sim.speed = Math.min(maxSpd, p2Sim.speed + accelRate2 * dt);
+          if (p2IsOffTrack) {
+            // OFF-TRACK P2: Mobil dibiarkan keluar lintasan di atas rumput/kerikil,
+            // namun hambatan permukaan rumput/kerikil menurunkan kecepatan secara drastis
+            p2Sim.speed = THREE.MathUtils.damp(p2Sim.speed, 50, 3.2, dt);
+            p2Sim.shake = THREE.MathUtils.damp(p2Sim.shake, 0.22, 6, dt);
+          } else {
+            // ON-TRACK: Akselerasi otomatis normal
+            const p2DiffAccelMult = difficulty === 'easy' ? 0.8 : difficulty === 'hard' ? 1.25 : 1.0;
+            const rawAccel2 = p2Sim.speed < 120 ? 55 : p2Sim.speed < 220 ? 30 : 15;
+            const accelRate2 = rawAccel2 * p2DiffAccelMult;
+            p2Sim.speed = Math.min(maxSpd, p2Sim.speed + accelRate2 * dt);
+          }
 
-          const steerSpeed = 3.2;
+          const steerSpeed2 = p2IsOffTrack ? 2.6 : 3.2;
           if (ctrl2.steerLeft) {
             p2Sim.steerAngle = THREE.MathUtils.damp(p2Sim.steerAngle, 0.45, 12, dt);
-            p2Sim.x += steerSpeed * (p2Sim.speed / 100 + 0.35) * 6 * dt;
+            p2Sim.x += steerSpeed2 * (p2Sim.speed / 100 + 0.35) * 6 * dt;
           } else if (ctrl2.steerRight) {
             p2Sim.steerAngle = THREE.MathUtils.damp(p2Sim.steerAngle, -0.45, 12, dt);
-            p2Sim.x -= steerSpeed * (p2Sim.speed / 100 + 0.35) * 6 * dt;
+            p2Sim.x -= steerSpeed2 * (p2Sim.speed / 100 + 0.35) * 6 * dt;
           } else {
             p2Sim.steerAngle = THREE.MathUtils.damp(p2Sim.steerAngle, 0, 9, dt);
           }
@@ -500,15 +529,14 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
           camera2.fov = 65 + (p2Sim.speed / maxSpd) * 12;
           camera2.updateProjectionMatrix();
 
-          // Track boundary collision check for P2
-          const trackCenter2 = trackData.getTrackXAtZ(p2Sim.z);
-          const distFromCenter2 = Math.abs(p2Sim.x - trackCenter2);
-          if (distFromCenter2 > trackData.trackWidth / 2 - 0.5) {
-            p2Sim.speed = Math.max(45, p2Sim.speed * 0.90);
+          // Outer runoff barrier collision check for P2
+          const maxRunoffWidth2 = trackData.trackWidth / 2 + 10.8;
+          if (distFromCenter2 > maxRunoffWidth2) {
+            p2Sim.speed = Math.max(35, p2Sim.speed * 0.85);
             p2Sim.shake = 0.35;
             p2Sim.x = THREE.MathUtils.damp(
               p2Sim.x,
-              trackCenter2 + Math.sign(p2Sim.x - trackCenter2) * (trackData.trackWidth / 2 - 0.7),
+              trackCenter2 + Math.sign(p2Sim.x - trackCenter2) * maxRunoffWidth2,
               12,
               dt
             );
@@ -672,6 +700,7 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
         score: p1Sim.score,
         lives: p1Sim.lives,
         isGameOver: p1Sim.isGameOver,
+        isOffTrack: p1IsOffTrack,
       }));
 
       if (mode === 'battle' && callbacksRef.current.onUpdateP2) {
@@ -684,6 +713,7 @@ export const RacingCanvas: React.FC<RacingCanvasProps> = ({
           score: p2Sim.score,
           lives: p2Sim.lives,
           isGameOver: p2Sim.isGameOver,
+          isOffTrack: p2IsOffTrack,
         }));
       }
 

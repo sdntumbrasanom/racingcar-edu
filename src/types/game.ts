@@ -44,6 +44,7 @@ export interface PlayerState {
   isGameOver: boolean;
   position: { x: number; y: number; z: number };
   steerAngle: number;
+  isOffTrack?: boolean;
   rank?: number;
 }
 

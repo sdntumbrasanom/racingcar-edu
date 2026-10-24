@@ -321,18 +321,18 @@ export function buildRaceCircuit(
   const rightKerbMesh = new THREE.Mesh(rightKerbGeo, kerbMat);
   scene.add(rightKerbMesh);
 
-  // --- 3. GREEN RUNOFF VERGES ---
-  const grassMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.9 });
-  [-trackWidth / 2 - 4.5, trackWidth / 2 + 4.5].forEach((sideOffset) => {
+  // --- 3. EXPANSIVE RUNOFF VERGES (GRASS & GRAVEL RUNOFF BEDS) ---
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.95 });
+  [1, -1].forEach((dir) => {
     const vPos: number[] = [];
     const vIdx: number[] = [];
     for (let i = 0; i <= numSlices; i++) {
       const z = startZ + i * stepZ;
       const cx = getTrackXAtZ(z);
-      const x1 = cx + sideOffset - 3.5;
-      const x2 = cx + sideOffset + 3.5;
-      vPos.push(x1, 0.01, z);
-      vPos.push(x2, 0.01, z);
+      const innerX = cx + dir * (trackWidth / 2 + kerbW);
+      const outerX = cx + dir * (trackWidth / 2 + 11.5);
+      vPos.push(innerX, 0.015, z);
+      vPos.push(outerX, 0.015, z);
       if (i < numSlices) {
         const v0 = i * 2;
         const v1 = i * 2 + 1;
@@ -348,7 +348,7 @@ export function buildRaceCircuit(
     scene.add(new THREE.Mesh(vGeo, grassMat));
   });
 
-  // --- 4. SLEEK CONTINUOUS SPONSOR BARRIERS ---
+  // --- 4. SLEEK PERIMETER SPONSOR BARRIERS (AT EDGE OF RUNOFF) ---
   const barrierMat = new THREE.MeshStandardMaterial({
     color: 0x334155,
     metalness: 0.85,
@@ -356,7 +356,7 @@ export function buildRaceCircuit(
   });
   const neonMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4 });
 
-  [trackWidth / 2 + 1.2, -trackWidth / 2 - 1.2].forEach((offset) => {
+  [trackWidth / 2 + 11.5, -trackWidth / 2 - 11.5].forEach((offset) => {
     const bPos: number[] = [];
     const bIdx: number[] = [];
     for (let i = 0; i <= numSlices; i++) {
@@ -419,7 +419,7 @@ export function buildRaceCircuit(
 
   for (let lz = 20; lz < trackLength; lz += 75) {
     const isLeft = (lz / 75) % 2 === 0;
-    const lx = getTrackXAtZ(lz) + (isLeft ? trackWidth / 2 + 3.5 : -trackWidth / 2 - 3.5);
+    const lx = getTrackXAtZ(lz) + (isLeft ? trackWidth / 2 + 13.0 : -trackWidth / 2 - 13.0);
 
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 9, 8), lightPoleMat);
     pole.position.set(lx, 4.5, lz);
@@ -429,7 +429,7 @@ export function buildRaceCircuit(
     lampBox.position.set(lx, 9.0, lz);
     scene.add(lampBox);
 
-    // Pine trees along perimeters
+    // Pine trees along outer perimeter
     const tx = lx + (isLeft ? 5 : -5);
     scene.add(createTree(tx, lz, 0.9 + Math.random() * 0.3));
   }
@@ -442,23 +442,23 @@ export function buildRaceCircuit(
     gantry.position.set(gx, 0, gz);
 
     // Left pillar
-    const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 7.0, 0.7), gantryPillarMat);
-    p1.position.set(trackWidth / 2 + 2.2, 3.5, 0);
+    const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 7.0, 0.8), gantryPillarMat);
+    p1.position.set(trackWidth / 2 + 12.2, 3.5, 0);
     gantry.add(p1);
 
     // Right pillar
-    const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 7.0, 0.7), gantryPillarMat);
-    p2.position.set(-trackWidth / 2 - 2.2, 3.5, 0);
+    const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 7.0, 0.8), gantryPillarMat);
+    p2.position.set(-trackWidth / 2 - 12.2, 3.5, 0);
     gantry.add(p2);
 
-    // Truss
-    const truss = new THREE.Mesh(new THREE.BoxGeometry(trackWidth + 5.5, 1.2, 0.9), gantryPillarMat);
+    // Truss spanning across track and runoff
+    const truss = new THREE.Mesh(new THREE.BoxGeometry(trackWidth + 25.5, 1.2, 0.9), gantryPillarMat);
     truss.position.set(0, 6.4, 0);
     gantry.add(truss);
 
     // Electronic LED Distance / Speed Sign
     const signMat = new THREE.MeshBasicMaterial({ color: gz % 600 === 0 ? 0x06b6d4 : 0xf59e0b });
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(trackWidth - 1, 0.8), signMat);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(trackWidth + 18, 0.8), signMat);
     sign.position.set(0, 6.4, 0.48);
     gantry.add(sign);
 
@@ -468,7 +468,7 @@ export function buildRaceCircuit(
   // --- 8. SPECTATOR GRANDSTANDS ---
   for (let sz = 150; sz < trackLength - 200; sz += 450) {
     const isLeft = (sz / 450) % 2 === 0;
-    const sx = getTrackXAtZ(sz) + (isLeft ? trackWidth / 2 + 10 : -trackWidth / 2 - 10);
+    const sx = getTrackXAtZ(sz) + (isLeft ? trackWidth / 2 + 18 : -trackWidth / 2 - 18);
 
     const standGroup = new THREE.Group();
     standGroup.position.set(sx, 0, sz);

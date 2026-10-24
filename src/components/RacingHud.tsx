@@ -136,20 +136,43 @@ export const RacingHud: React.FC<RacingHudProps> = ({
           </button>
         </div>
 
-        {/* Center: Digital Speedometer with Auto-Acceleration indicator */}
+        {/* Center: Digital Speedometer with Auto-Acceleration & Off-Track indicator */}
         <div className="flex flex-col items-center pb-0.5">
-          <div className="bg-slate-900/95 border-2 border-slate-700/85 px-4 sm:px-6 py-2 rounded-2xl shadow-2xl flex flex-col items-center backdrop-blur-md">
+          <div
+            className={`px-4 sm:px-6 py-2 rounded-2xl shadow-2xl flex flex-col items-center backdrop-blur-md transition-all duration-300 border-2 ${
+              playerState.isOffTrack
+                ? 'bg-rose-950/90 border-rose-500 shadow-[0_0_25px_rgba(244,63,94,0.6)] animate-pulse'
+                : 'bg-slate-900/95 border-slate-700/85'
+            }`}
+          >
             <div className="flex items-baseline gap-1.5">
-              <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight tabular-nums text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">
+              <span
+                className={`text-3xl sm:text-4xl font-black font-mono tracking-tight tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.4)] ${
+                  playerState.isOffTrack ? 'text-rose-200' : 'text-white'
+                }`}
+              >
                 {playerState.speed}
               </span>
-              <span className="text-xs font-black text-cyan-400 uppercase tracking-widest">KM/H</span>
+              <span
+                className={`text-xs font-black uppercase tracking-widest ${
+                  playerState.isOffTrack ? 'text-rose-400' : 'text-cyan-400'
+                }`}
+              >
+                KM/H
+              </span>
             </div>
 
-            <div className="mt-1 flex items-center gap-1.5 text-[9px] font-bold text-emerald-400 tracking-wider uppercase">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
-              <span>Jalan Otomatis</span>
-            </div>
+            {playerState.isOffTrack ? (
+              <div className="mt-1 flex items-center gap-1.5 text-[9px] font-black text-amber-300 tracking-wider uppercase">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping inline-block" />
+                <span>⚠️ Keluar Lintasan (Melambat)</span>
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center gap-1.5 text-[9px] font-bold text-emerald-400 tracking-wider uppercase">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                <span>Jalan Otomatis</span>
+              </div>
+            )}
           </div>
         </div>
 
