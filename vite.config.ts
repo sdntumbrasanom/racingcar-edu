@@ -6,7 +6,7 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     // Aset JavaScript/CSS dibaca dari /racingcar-edu/ di GitHub Pages, atau ./ untuk preview
-    base: process.env.GITHUB_ACTIONS ? '/gamecenter-edu/' : './',
+    base: process.env.GITHUB_ACTIONS ? '/racingcar-edu/' : './',
     
     plugins: [react(), tailwindcss()],
     resolve: {
